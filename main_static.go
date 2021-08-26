@@ -18,7 +18,7 @@ import (
 	_ "github.com/lnxjedi/gopherbot/goplugins/lists"
 	_ "github.com/lnxjedi/gopherbot/goplugins/meme"
 	_ "github.com/lnxjedi/gopherbot/goplugins/ping"
-	_ "github.com/lnxjedi/gopherbot/goplugins/totp"
+	_ "github.com/lnxjedi/gopherbot/goplugins/slack-totp"
 
 	// *** Default Slack connector
 	_ "github.com/lnxjedi/gopherbot/connectors/slack"
