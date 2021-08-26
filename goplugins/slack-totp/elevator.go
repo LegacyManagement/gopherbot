@@ -126,10 +126,12 @@ func elevate(r robot.Robot, command string, args ...string) (retval robot.TaskRe
 		sclient := m.Incoming.Client.(*slack.Client)
 		totpMsgOpts := []slack.MsgOption{
 			slack.MsgOptionText(fmt.Sprintf("Here's your TOTP token, please copy it someplace safe: %s", userOTP.Secret), false),
+			slack.MsgOptionAsUser(true),
 		}
 		_, ephemerr := sclient.PostEphemeral(m.ProtocolChannel, m.ProtocolUser, totpMsgOpts...)
 		if ephemerr != nil {
 			r.Reply("Oops! I had a problem sending your token")
+			r.Log(robot.Error, "Sending ephemeral message: %v", ephemerr)
 			ret = robot.FailedMessageSend
 			return
 		}
