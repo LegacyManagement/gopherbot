@@ -3,13 +3,7 @@
 # get-version.sh - used by the Makefile to inject the correct
 # version in to the Go linker.
 
-if [ "$BUILDREF" ]
+if VERSION=$(git describe --exact-match --tags HEAD 2>/dev/null)
 then
-    echo "$BUILDREF"
-    exit 0
+    echo "-X main.Version=$VERSION"
 fi
-
-VERLINE=$(grep "^var Version" main.go)
-VERLINE=${VERLINE%\"*}
-VERSION=${VERLINE##*\"}
-echo "$VERSION"
