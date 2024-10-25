@@ -122,6 +122,11 @@ GIT_COMMITTER_NAME="David Parsley"
 GIT_COMMITTER_EMAIL=parsley@linuxjedi.org
 #|CONTAINERNAME=bishop
 #|SSH_KEY_PATH=/home/david/.ssh/id_rsa
+## Items needed for bootstrapping an existing robot
+#GOPHER_ENCRYPTION_KEY=<key>
+#GOPHER_CUSTOM_REPOSITORY=<git@...> # ssh URL for repo
+#GOPHER_PROTOCOL=slack              # if you need to override
+#GOPHER_DEPLOY_KEY=<key>
 EOF
             exit 0
             ;;
@@ -155,6 +160,11 @@ GIT_AUTHOR_EMAIL=${GIT_EMAIL}
 GIT_COMMITTER_NAME="${GIT_USER}"
 GIT_COMMITTER_EMAIL=${GIT_EMAIL}
 #|CONTAINERNAME=${CONTAINERNAME}
+## Items needed for bootstrapping an existing robot
+#GOPHER_ENCRYPTION_KEY=<key>
+#GOPHER_CUSTOM_REPOSITORY=<git@...> # ssh URL for repo
+#GOPHER_PROTOCOL=slack              # if you need to override
+#GOPHER_DEPLOY_KEY=<key>
 EOF
     if [ "$SSH_KEY_PATH" ]
     then
@@ -536,7 +546,7 @@ EOF
             -p 127.0.0.1:7777:7777 \
             -p 127.0.0.1:8888:8888 \
             --env-file $GOPHER_PROFILE \
-            --entrypoint /usr/bin/tini \
+            --entrypoint /usr/local/bin/tini \
             -e GOPHER_IDE="$CONTAINERNAME" \
             -l type=gopherbot/robot \
             -l environment=robot/development \
