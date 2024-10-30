@@ -20,11 +20,11 @@ import (
 const tooManyChannels = 4
 
 func init() {
-	RegisterPlugin("builtin-fallback", robot.PluginHandler{Handler: fallback})
-	RegisterPlugin("builtin-dmadmin", robot.PluginHandler{Handler: dmadmin})
-	RegisterPlugin("builtin-help", robot.PluginHandler{Handler: help})
-	RegisterPlugin("builtin-admin", robot.PluginHandler{Handler: admin})
-	RegisterPlugin("builtin-logging", robot.PluginHandler{Handler: logging})
+	robot.RegisterPlugin("builtin-fallback", robot.PluginHandler{Handler: fallback})
+	robot.RegisterPlugin("builtin-dmadmin", robot.PluginHandler{Handler: dmadmin})
+	robot.RegisterPlugin("builtin-help", robot.PluginHandler{Handler: help})
+	robot.RegisterPlugin("builtin-admin", robot.PluginHandler{Handler: admin})
+	robot.RegisterPlugin("builtin-logging", robot.PluginHandler{Handler: logging})
 }
 
 func defaultHelp() []string {
@@ -131,7 +131,7 @@ func help(m robot.Robot, command string, args ...string) (retval robot.TaskRetVa
 
 		if len(args) == 1 && len(args[0]) > 0 {
 			hasKeyword = true
-			term = args[0]
+			term = strings.ToLower(args[0])
 			Log(robot.Trace, "Help requested for term '%s'", term)
 		}
 
@@ -182,7 +182,7 @@ func help(m robot.Robot, command string, args ...string) (retval robot.TaskRetVa
 			} else { // when there's a search term, give all help for that term, but add (channels: xxx) at the end
 				for _, phelp := range plugin.Help {
 					for _, keyword := range phelp.Keywords {
-						if term == keyword {
+						if term == strings.ToLower(keyword) {
 							chantext := ""
 							if task.DirectOnly {
 								// Look: the right paren gets added below

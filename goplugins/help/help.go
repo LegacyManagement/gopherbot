@@ -7,12 +7,6 @@ import (
 	"strings"
 
 	"github.com/lnxjedi/gopherbot/robot"
-	"github.com/lnxjedi/gopherbot/v2/bot"
-)
-
-var (
-	gobot   bot.Robot
-	botName string
 )
 
 // Define the handler function
@@ -46,5 +40,5 @@ func help(bot robot.Robot, command string, args ...string) (retval robot.TaskRet
 }
 
 func init() {
-	bot.RegisterPlugin("help", robot.PluginHandler{Handler: help})
+	robot.RegisterPlugin("help", robot.PluginHandler{Handler: help})
 }
