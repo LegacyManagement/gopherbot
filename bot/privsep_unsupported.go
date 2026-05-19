@@ -17,6 +17,10 @@ func currentPrivsepIdentityReport() (privsepIdentityReport, error) {
 	return privsepIdentityReport{}, nil
 }
 
+func switchPrivsepEffectiveUID(uid int) error {
+	return nil
+}
+
 func checkprivsep() {
 	Log(robot.Info, "PRIVSEP - Privilege separation not available on this platform")
 }

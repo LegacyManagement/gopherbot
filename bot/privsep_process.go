@@ -29,6 +29,17 @@ type privsepIdentityReport struct {
 	Groups []int `json:"groups"`
 }
 
+type setuidExecutableTarget struct {
+	path string
+	info os.FileInfo
+}
+
+var (
+	currentExecutablePath  = os.Executable
+	setPrivsepEffectiveUID = switchPrivsepEffectiveUID
+	statExecutableTarget   = os.Stat
+)
+
 func (r privsepChildRole) valid() bool {
 	switch r {
 	case privsepRoleNone, privsepRolePrivileged, privsepRoleUnprivileged:
@@ -136,7 +147,7 @@ func logPrivsepInitDiagnostic(format string, args ...interface{}) {
 }
 
 func setuidExecutablePath() (string, error) {
-	execPath, err := os.Executable()
+	execPath, err := currentExecutablePath()
 	if err != nil {
 		return "", err
 	}
@@ -149,6 +160,55 @@ func resolveExecutableTarget(execPath string) (string, error) {
 		return "", err
 	}
 	return resolved, nil
+}
+
+func setuidExecutableTargetForTamperCheck(resolveUID, restoreUID int) (target setuidExecutableTarget, err error) {
+	err = withPrivsepEffectiveUID(resolveUID, restoreUID, func() error {
+		execPath, err := setuidExecutablePath()
+		if err != nil {
+			return err
+		}
+		info, err := statExecutableTarget(execPath)
+		if err != nil {
+			return err
+		}
+		target = setuidExecutableTarget{
+			path: execPath,
+			info: info,
+		}
+		return nil
+	})
+	return target, err
+}
+
+func setuidExecutableTargetForCurrentPrivsep() (setuidExecutableTarget, error) {
+	return setuidExecutableTargetForTamperCheck(privUID, unprivUID)
+}
+
+func withPrivsepEffectiveUID(resolveUID, restoreUID int, fn func() error) (err error) {
+	if resolveUID == restoreUID {
+		return fn()
+	}
+	if err := setPrivsepEffectiveUID(resolveUID); err != nil {
+		return fmt.Errorf("switch effective uid to invoking uid %d: %w", resolveUID, err)
+	}
+	defer func() {
+		if restoreErr := setPrivsepEffectiveUID(restoreUID); restoreErr != nil {
+			if err != nil {
+				err = fmt.Errorf("%w; restoring effective uid to setuid uid %d: %v", err, restoreUID, restoreErr)
+				return
+			}
+			err = fmt.Errorf("restore effective uid to setuid uid %d: %w", restoreUID, restoreErr)
+		}
+	}()
+	return fn()
+}
+
+func verifyUnprivilegedExecutableReachability(userName, execPath string) error {
+	if _, err := statExecutableTarget(execPath); err != nil {
+		return fmt.Errorf("user '%s' unable to traverse directories to '%s' - make sure %s has access to the installation before running setuid %s", userName, execPath, userName, userName)
+	}
+	return nil
 }
 
 func validatePrivsepIdentityReport(report privsepIdentityReport) error {

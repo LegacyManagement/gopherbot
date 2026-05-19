@@ -18,13 +18,14 @@ var privUID, unprivUID int
 var privGID int
 
 func panicIfDarwinSetuidBinaryTampered(unprivUID int) {
-	execPath, err := setuidExecutablePath()
+	target, err := setuidExecutableTargetForCurrentPrivsep()
 	if err != nil {
 		panic("binary could be tampered! unable to resolve executable path")
 	}
-	info, err := os.Stat(execPath)
-	if err != nil {
-		panic("binary could be tampered! unable to stat executable")
+	execPath := target.path
+	info := target.info
+	if err := verifyUnprivilegedExecutableReachability(fmt.Sprintf("uid %d", unprivUID), execPath); err != nil {
+		panic(err.Error())
 	}
 	if !info.Mode().IsRegular() {
 		panic("binary could be tampered! executable path is not a regular file")
@@ -45,6 +46,10 @@ func panicIfDarwinSetuidBinaryTampered(unprivUID int) {
 	if int(st.Uid) != unprivUID {
 		panic(fmt.Sprintf("binary could be tampered! setuid executable owner mismatch for %s: got uid %d, want unprivileged uid %d", execPath, st.Uid, unprivUID))
 	}
+}
+
+func switchPrivsepEffectiveUID(uid int) error {
+	return syscall.Seteuid(uid)
 }
 
 func init() {

@@ -63,13 +63,14 @@ func panicIfSetuidBinaryTampered(unprivUID int) {
 	if unprivUID != nobodyUID {
 		return
 	}
-	execPath, err := setuidExecutablePath()
+	target, err := setuidExecutableTargetForCurrentPrivsep()
 	if err != nil {
 		panic("binary could be tampered! unable to resolve executable path")
 	}
-	info, err := os.Stat(execPath)
-	if err != nil {
-		panic("binary could be tampered! unable to stat executable")
+	execPath := target.path
+	info := target.info
+	if err := verifyUnprivilegedExecutableReachability("nobody", execPath); err != nil {
+		panic(err.Error())
 	}
 	if !info.Mode().IsRegular() {
 		panic("binary could be tampered! executable path is not a regular file")
@@ -93,6 +94,10 @@ func panicIfSetuidBinaryTampered(unprivUID int) {
 	if int(st.Gid) != nobodyGID {
 		logPrivsepInitDiagnostic("PRIVSEP - setuid executable group is %d, not nobody gid %d; UID-only privsep leaves GID unchanged", st.Gid, nobodyGID)
 	}
+}
+
+func switchPrivsepEffectiveUID(uid int) error {
+	return syscall.Seteuid(uid)
 }
 
 func init() {

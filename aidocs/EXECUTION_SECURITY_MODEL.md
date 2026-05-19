@@ -53,6 +53,11 @@ On supported Unix platforms (`bot/privsep.go` for Linux/BSD and `bot/privsep_dar
 - It also records the invoking robot GID.
 - Startup swaps the parent engine back to the invoking effective UID while preserving the setuid unprivileged saved UID for later child commits.
 - Startup sets `umask 027` when privsep is active. New files are not world-readable, and group-readable files are not group-writable by default.
+- Startup fails early if the setuid unprivileged user cannot traverse to the
+  resolved installed binary path. Developer launcher symlinks are allowed, but
+  the real installation tree must be reachable by the unprivileged user because
+  file-backed children re-exec the installed binary and then run extension
+  files from that tree.
 - `privSep` is enabled only when this initialization succeeds.
 
 Runtime visibility is logged through `checkprivsep()` in startup (`bot/start.go`).

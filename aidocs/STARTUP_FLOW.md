@@ -38,7 +38,11 @@ Install path note:
   `~/.local/bin/gopherbot -> /path/to/gopherbot/gopherbot` while still loading
   installed defaults from the real repository/distribution directory.
 - When privilege separation is active, the setuid tamper check also resolves
-  executable symlinks and validates the real target's owner and mode.
+  executable symlinks and validates the real target's owner and mode. The
+  resolved installation target must also be reachable by the setuid
+  unprivileged user, commonly `nobody`, because unprivileged child processes
+  re-exec the installed binary and run file-backed extensions from that
+  installation tree.
 
 Test harness note:
 

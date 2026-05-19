@@ -2,9 +2,11 @@ package bot
 
 import (
 	"bytes"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -158,5 +160,102 @@ func TestResolveExecutableTargetAllowsSymlink(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("resolveExecutableTarget() = %q, want %q", got, want)
+	}
+}
+
+func TestSetuidExecutableTargetSwitchesToInvokerForSymlinkInspection(t *testing.T) {
+	dir := t.TempDir()
+	realExe := filepath.Join(dir, "gopherbot-real")
+	linkExe := filepath.Join(dir, "gopherbot")
+	if err := os.WriteFile(realExe, []byte("binary"), 04755); err != nil {
+		t.Fatalf("WriteFile realExe: %v", err)
+	}
+	if err := os.Symlink(realExe, linkExe); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	oldExecutablePath := currentExecutablePath
+	oldSetEffectiveUID := setPrivsepEffectiveUID
+	oldStatExecutableTarget := statExecutableTarget
+	t.Cleanup(func() {
+		currentExecutablePath = oldExecutablePath
+		setPrivsepEffectiveUID = oldSetEffectiveUID
+		statExecutableTarget = oldStatExecutableTarget
+	})
+
+	var switched []int
+	currentExecutablePath = func() (string, error) {
+		return linkExe, nil
+	}
+	setPrivsepEffectiveUID = func(uid int) error {
+		switched = append(switched, uid)
+		return nil
+	}
+
+	target, err := setuidExecutableTargetForTamperCheck(1000, 65534)
+	if err != nil {
+		t.Fatalf("setuidExecutableTargetForTamperCheck() error = %v", err)
+	}
+	wantPath, err := filepath.EvalSymlinks(realExe)
+	if err != nil {
+		t.Fatalf("EvalSymlinks realExe: %v", err)
+	}
+	if target.path != wantPath {
+		t.Fatalf("target path = %q, want %q", target.path, wantPath)
+	}
+	if target.info == nil || !target.info.Mode().IsRegular() {
+		t.Fatalf("target info = %#v, want regular file info", target.info)
+	}
+	if want := []int{1000, 65534}; !reflect.DeepEqual(switched, want) {
+		t.Fatalf("effective UID switches = %v, want %v", switched, want)
+	}
+}
+
+func TestSetuidExecutableTargetRestoresSetuidUIDAfterInspectionFailure(t *testing.T) {
+	oldExecutablePath := currentExecutablePath
+	oldSetEffectiveUID := setPrivsepEffectiveUID
+	oldStatExecutableTarget := statExecutableTarget
+	t.Cleanup(func() {
+		currentExecutablePath = oldExecutablePath
+		setPrivsepEffectiveUID = oldSetEffectiveUID
+		statExecutableTarget = oldStatExecutableTarget
+	})
+
+	var switched []int
+	currentExecutablePath = func() (string, error) {
+		return "", errors.New("no executable")
+	}
+	setPrivsepEffectiveUID = func(uid int) error {
+		switched = append(switched, uid)
+		return nil
+	}
+
+	_, err := setuidExecutableTargetForTamperCheck(1000, 65534)
+	if err == nil {
+		t.Fatal("setuidExecutableTargetForTamperCheck() error = nil, want failure")
+	}
+	if want := []int{1000, 65534}; !reflect.DeepEqual(switched, want) {
+		t.Fatalf("effective UID switches = %v, want %v", switched, want)
+	}
+}
+
+func TestVerifyUnprivilegedExecutableReachabilityReportsTraversalFailure(t *testing.T) {
+	oldStatExecutableTarget := statExecutableTarget
+	t.Cleanup(func() {
+		statExecutableTarget = oldStatExecutableTarget
+	})
+
+	statExecutableTarget = func(name string) (os.FileInfo, error) {
+		return nil, os.ErrPermission
+	}
+
+	const execPath = "/home/david/git/gopherbot/gopherbot"
+	err := verifyUnprivilegedExecutableReachability("nobody", execPath)
+	if err == nil {
+		t.Fatal("verifyUnprivilegedExecutableReachability() error = nil, want traversal failure")
+	}
+	want := "user 'nobody' unable to traverse directories to '/home/david/git/gopherbot/gopherbot' - make sure nobody has access to the installation before running setuid nobody"
+	if err.Error() != want {
+		t.Fatalf("verifyUnprivilegedExecutableReachability() error = %q, want %q", err.Error(), want)
 	}
 }
