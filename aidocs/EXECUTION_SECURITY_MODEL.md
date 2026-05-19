@@ -62,6 +62,7 @@ After pre-connect config load, startup validates the unprivileged child role wit
 - the self-check child commits to the unprivileged role
 - the child reports UID/GID/supplementary groups as JSON
 - startup fails closed if UID/EUID are wrong or if the child GID changes instead of remaining the invoking robot user's GID
+- the self-check child's stdout is reserved for the JSON report; privsep startup diagnostics use stderr so validation cannot be broken by human-readable log lines
 
 Non-robot CLI commands skip this startup self-check because they run as the
 invoking user and do not start connector runtimes or file-backed extension

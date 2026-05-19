@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,5 +91,72 @@ func TestLoadConfigRejectsRemovedPrivsepGroupKeys(t *testing.T) {
 				t.Fatalf("loadConfig() error = %q, want removed key failure for %s", err.Error(), key)
 			}
 		})
+	}
+}
+
+func TestDecodePrivsepSelfCheckReportReportsContaminatedStdout(t *testing.T) {
+	var report privsepIdentityReport
+	err := decodePrivsepSelfCheckReport([]byte("PRIVSEP - noisy diagnostic\n{\"uid\":65534}\n"), &report)
+	if err == nil {
+		t.Fatal("decodePrivsepSelfCheckReport() error = nil, want contaminated stdout error")
+	}
+	for _, want := range []string{
+		"decoding privsep self-check report",
+		"invalid character 'P'",
+		"stdout: PRIVSEP - noisy diagnostic",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("decodePrivsepSelfCheckReport() error = %q, want substring %q", err.Error(), want)
+		}
+	}
+}
+
+func TestLogPrivsepInitDiagnosticUsesStderrForInternalChildCommand(t *testing.T) {
+	oldArgs := os.Args
+	oldStdout := botStdOutLogger
+	oldStderr := botStdErrLogger
+	t.Cleanup(func() {
+		os.Args = oldArgs
+		botStdOutLogger = oldStdout
+		botStdErrLogger = oldStderr
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	botStdOutLogger = log.New(&stdout, "", 0)
+	botStdErrLogger = log.New(&stderr, "", 0)
+	os.Args = []string{"gopherbot", privsepSelfCheckCommand}
+
+	logPrivsepInitDiagnostic("PRIVSEP - %s", "diagnostic")
+
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout log = %q, want empty", stdout.String())
+	}
+	if got := stderr.String(); !strings.Contains(got, "PRIVSEP - diagnostic") {
+		t.Fatalf("stderr log = %q, want privsep diagnostic", got)
+	}
+}
+
+func TestResolveExecutableTargetAllowsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "gopherbot-real")
+	link := filepath.Join(dir, "gopherbot")
+	if err := os.WriteFile(target, []byte("binary"), 0700); err != nil {
+		t.Fatalf("WriteFile target: %v", err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	got, err := resolveExecutableTarget(link)
+	if err != nil {
+		t.Fatalf("resolveExecutableTarget() error = %v", err)
+	}
+	want, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatalf("EvalSymlinks target: %v", err)
+	}
+	if got != want {
+		t.Fatalf("resolveExecutableTarget() = %q, want %q", got, want)
 	}
 }

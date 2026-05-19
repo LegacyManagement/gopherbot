@@ -18,16 +18,13 @@ var privUID, unprivUID int
 var privGID int
 
 func panicIfDarwinSetuidBinaryTampered(unprivUID int) {
-	execPath, err := os.Executable()
+	execPath, err := setuidExecutablePath()
 	if err != nil {
 		panic("binary could be tampered! unable to resolve executable path")
 	}
-	info, err := os.Lstat(execPath)
+	info, err := os.Stat(execPath)
 	if err != nil {
 		panic("binary could be tampered! unable to stat executable")
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		panic("binary could be tampered! executable path is a symlink")
 	}
 	if !info.Mode().IsRegular() {
 		panic("binary could be tampered! executable path is not a regular file")
@@ -46,7 +43,7 @@ func panicIfDarwinSetuidBinaryTampered(unprivUID int) {
 		panic("binary could be tampered! unable to verify executable owner")
 	}
 	if int(st.Uid) != unprivUID {
-		panic("binary could be tampered! setuid executable owner mismatch")
+		panic(fmt.Sprintf("binary could be tampered! setuid executable owner mismatch for %s: got uid %d, want unprivileged uid %d", execPath, st.Uid, unprivUID))
 	}
 }
 
@@ -65,26 +62,26 @@ func init() {
 		// swapped back to the invoking user. Children re-exec the same setuid
 		// binary and permanently commit before extension code starts.
 		if err := syscall.Setreuid(-1, privUID); err != nil {
-			botStdOutLogger.Printf("PRIVSEP - error setting reuid in init: %v", err)
+			logPrivsepInitDiagnostic("PRIVSEP - error setting reuid in init: %v", err)
 			return
 		}
 
 		cwd, err := os.Getwd()
 		if err != nil {
-			botStdOutLogger.Printf("PRIVSEP - error getting current working directory: %v", err)
+			logPrivsepInitDiagnostic("PRIVSEP - error getting current working directory: %v", err)
 			return
 		}
 		info, err := os.Stat(cwd)
 		if err != nil {
-			botStdOutLogger.Printf("PRIVSEP - error stating current working directory '%s': %v", cwd, err)
+			logPrivsepInitDiagnostic("PRIVSEP - error stating current working directory '%s': %v", cwd, err)
 			return
 		}
 		if mode := info.Mode().Perm(); mode != 0755 {
 			if err := os.Chmod(cwd, 0755); err != nil {
-				botStdOutLogger.Printf("PRIVSEP - error changing permissions of current working directory '%s' to 0755: %v", cwd, err)
+				logPrivsepInitDiagnostic("PRIVSEP - error changing permissions of current working directory '%s' to 0755: %v", cwd, err)
 				return
 			}
-			botStdOutLogger.Printf("PRIVSEP - changed permissions of current working directory '%s' from %o to 0755", cwd, mode)
+			logPrivsepInitDiagnostic("PRIVSEP - changed permissions of current working directory '%s' from %o to 0755", cwd, mode)
 		}
 
 		privSep = true

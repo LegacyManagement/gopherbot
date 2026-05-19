@@ -24,6 +24,7 @@ Internal exception:
 - `pipeline-child-exec` is an internal command used by multiprocess task execution; it exits after one child-task run and bypasses normal robot startup phases.
 - `pipeline-child-rpc` is an internal command used by multiprocess RPC execution; it runs a versioned stdio RPC loop (including Lua/JavaScript/Go execution and configure methods) and bypasses normal robot startup phases.
 - `privsep-self-check` is an internal command used during startup validation when privilege separation is active; it commits to the unprivileged child role, reports UID/GID/group state as JSON, and bypasses normal robot startup phases.
+- Internal child command stdout is protocol-owned. Startup or privsep diagnostics for these commands must use stderr so JSON/RPC/stdout protocol streams remain parseable.
 
 ## Entry Points
 
@@ -36,6 +37,8 @@ Install path note:
   `installPath`. This supports developer/operator installs such as
   `~/.local/bin/gopherbot -> /path/to/gopherbot/gopherbot` while still loading
   installed defaults from the real repository/distribution directory.
+- When privilege separation is active, the setuid tamper check also resolves
+  executable symlinks and validates the real target's owner and mode.
 
 Test harness note:
 

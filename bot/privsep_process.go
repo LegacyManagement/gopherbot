@@ -1,10 +1,12 @@
 package bot
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -113,6 +115,42 @@ func runPrivsepSelfCheck() int {
 	return 0
 }
 
+func privsepInternalCommandActive() bool {
+	if len(os.Args) < 2 {
+		return false
+	}
+	switch os.Args[1] {
+	case pipelineChildExecCommand, pipelineChildRPCCommand, privsepSelfCheckCommand:
+		return true
+	default:
+		return false
+	}
+}
+
+func logPrivsepInitDiagnostic(format string, args ...interface{}) {
+	logger := botStdOutLogger
+	if privsepInternalCommandActive() {
+		logger = botStdErrLogger
+	}
+	logger.Printf(format, args...)
+}
+
+func setuidExecutablePath() (string, error) {
+	execPath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return resolveExecutableTarget(execPath)
+}
+
+func resolveExecutableTarget(execPath string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(execPath)
+	if err != nil {
+		return "", err
+	}
+	return resolved, nil
+}
+
 func validatePrivsepIdentityReport(report privsepIdentityReport) error {
 	if report.UID != unprivUID || report.EUID != unprivUID {
 		return fmt.Errorf("privsep self-check unprivileged child UID mismatch: uid/euid %d/%d, want %d/%d", report.UID, report.EUID, unprivUID, unprivUID)
@@ -139,18 +177,48 @@ func runPrivsepStartupSelfCheck() (privsepIdentityReport, error) {
 	cmd := exec.Command(execPath(), privsepSelfCheckCommand)
 	env := appendPrivsepRoleEnv(nil, privsepRoleUnprivileged)
 	cmd.Env = sanitizedChildEnvironment(env...)
-	out, err := cmd.Output()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			stderr := strings.TrimSpace(string(exitErr.Stderr))
-			if stderr != "" {
-				return report, fmt.Errorf("privsep self-check failed: %v: %s", err, stderr)
-			}
+		stderrText := strings.TrimSpace(stderr.String())
+		if stderrText != "" {
+			return report, fmt.Errorf("privsep self-check failed: %v: %s", err, truncatePrivsepOutput(stderrText))
 		}
 		return report, fmt.Errorf("privsep self-check failed: %v", err)
 	}
-	if err := json.Unmarshal(out, &report); err != nil {
-		return report, fmt.Errorf("decoding privsep self-check report: %v", err)
+	if err := decodePrivsepSelfCheckReport(stdout.Bytes(), &report); err != nil {
+		stderrText := strings.TrimSpace(stderr.String())
+		if stderrText != "" {
+			return report, fmt.Errorf("%v; stderr: %s", err, truncatePrivsepOutput(stderrText))
+		}
+		return report, err
 	}
 	return report, nil
+}
+
+func decodePrivsepSelfCheckReport(out []byte, report *privsepIdentityReport) error {
+	if err := json.Unmarshal(out, report); err != nil {
+		return fmt.Errorf("decoding privsep self-check report: %v; stdout: %s", err, summarizePrivsepOutput(out))
+	}
+	return nil
+}
+
+func summarizePrivsepOutput(out []byte) string {
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return "<empty>"
+	}
+	return truncatePrivsepOutput(trimmed)
+}
+
+func truncatePrivsepOutput(s string) string {
+	const max = 240
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "...(truncated)"
 }
