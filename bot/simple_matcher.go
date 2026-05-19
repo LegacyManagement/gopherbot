@@ -857,14 +857,14 @@ func invalidSimpleMatcherTypeDiagnostic(label, kind, value string) string {
 	if description == "" {
 		description = "a valid " + kind + " value."
 	}
-	return fmt.Sprintf("Invalid value '%s' for '%s'; expected %s", value, name, description)
+	return fmt.Sprintf("Invalid value: %q for: %q; expected: %s", value, name, description)
 }
 
 func invalidSimpleMatcherChoiceDiagnostic(label, value string, choices []string) string {
 	if strings.TrimSpace(label) == "" {
-		return fmt.Sprintf("Invalid value '%s'; valid values: %s.", value, strings.Join(choices, ", "))
+		return fmt.Sprintf("Invalid value: %q; valid values: %s.", value, strings.Join(choices, ", "))
 	}
-	return fmt.Sprintf("Invalid value '%s' for '%s'; valid values: %s.", value, label, strings.Join(choices, ", "))
+	return fmt.Sprintf("Invalid value: %q for: %q; valid values: %s.", value, label, strings.Join(choices, ", "))
 }
 
 func (p *simpleMatcherParser) skipSpaces() {

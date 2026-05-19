@@ -486,7 +486,7 @@ func TestSimpleMatcherInputMatchSyntaxDiagnosticForLabelledChoice(t *testing.T) 
 
 	result := matcher.matchInput("set loglevel to fine")
 
-	assertInputMatchResult(t, result, inputSyntaxMatch, nil, "Invalid value 'fine' for 'level'; valid values: trace, debug, info, warn, error.")
+	assertInputMatchResult(t, result, inputSyntaxMatch, nil, "Invalid value: \"fine\" for: \"level\"; valid values: trace, debug, info, warn, error.")
 }
 
 func TestSimpleMatcherInputMatchSkeletonMismatchIsNoMatch(t *testing.T) {
@@ -507,14 +507,14 @@ func TestSimpleMatcherInputMatchSyntaxDiagnosticForTypedCapture(t *testing.T) {
 
 	result := matcher.matchInput("deploy siding 9round")
 
-	assertInputMatchResult(t, result, inputSyntaxMatch, nil, "Invalid value '9round' for 'siding'; expected an identifier starting with a letter, followed by letters, numbers, '_' or '-'.")
+	assertInputMatchResult(t, result, inputSyntaxMatch, nil, "Invalid value: \"9round\" for: \"siding\"; expected: an identifier starting with a letter, followed by letters, numbers, '_' or '-'.")
 }
 
 func TestSimpleMatcherInputMatchOptionalTypedCaptureDiagnostics(t *testing.T) {
 	matcher := mustCompileSimpleInputMatcher(t, "show /log|logs/ [page <page:number>]")
 
 	result := matcher.matchInput("show logs page two")
-	assertInputMatchResult(t, result, inputSyntaxMatch, nil, "Invalid value 'two' for 'page'; expected an integer.")
+	assertInputMatchResult(t, result, inputSyntaxMatch, nil, "Invalid value: \"two\" for: \"page\"; expected: an integer.")
 
 	result = matcher.matchInput("show logs two")
 	assertInputMatchResult(t, result, inputNoMatch, nil, "")

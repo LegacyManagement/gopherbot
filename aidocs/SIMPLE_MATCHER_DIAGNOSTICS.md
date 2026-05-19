@@ -82,7 +82,7 @@ set loglevel to fine
 Result:
 
 ```text
-SyntaxMatch: Invalid value 'fine' for 'level'; valid values: trace, debug, info, warn, error.
+SyntaxMatch: Invalid value: "fine" for: "level"; valid values: trace, debug, info, warn, error.
 ```
 
 Input:
@@ -131,7 +131,7 @@ Typed captures already support labels:
 The matcher object retains the label and type. If the skeleton matches and the user supplies an invalid value, the diagnostic names the label and explains the type:
 
 ```text
-Invalid value '9round' for 'siding'; expected an identifier starting with a letter, followed by letters, numbers, '_' or '-'.
+Invalid value: "9round" for: "siding"; expected: an identifier starting with a letter, followed by letters, numbers, '_' or '-'.
 ```
 
 Types should have short human descriptions alongside their regex patterns. These descriptions must be stable enough for tests.

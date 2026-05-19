@@ -148,7 +148,7 @@ SimpleMatcher: "set loglevel {to} (level:trace|debug|info|warn|error)"
 can produce:
 
 ```text
-Invalid value 'fine' for 'level'; valid values: trace, debug, info, warn, error.
+Invalid value: "fine" for: "level"; valid values: trace, debug, info, warn, error.
 ```
 
 Typed captures should describe the type:
@@ -166,7 +166,7 @@ SimpleMatcher: "deploy siding <siding:ident>"
 can produce:
 
 ```text
-Invalid value '9round' for 'siding'; expected an identifier starting with a letter, followed by letters, numbers, '_' or '-'.
+Invalid value: "9round" for: "siding"; expected: an identifier starting with a letter, followed by letters, numbers, '_' or '-'.
 ```
 
 Exact matches always win over syntax diagnostics. If more than one visible command produces a syntax diagnostic, the engine should avoid guessing and fall back to the normal unmatched-command guidance.

@@ -23,17 +23,17 @@ collect_active_docs() {
 }
 
 report_info "checking stale path references in active docs"
-if collect_active_docs | xargs rg -n "aidocs/GOALS_v3.md|devdocs/UPGRADING-v3.md|Upgrading_to_v3\.md"; then
+if collect_active_docs | xargs rg -n "aidocs/GOALS_v3.md|devdocs/UPGRADING-v3.md|Upgrading_to_v3\.md" /dev/null; then
   report_fail "found stale path reference(s); use root GOALS_v3.md and root UPGRADING-v3.md"
 fi
 
 report_info "checking stale implementation markers in active docs"
-if collect_active_docs | xargs rg -n "commit pending|pending implementation|not yet started|: pending$"; then
+if collect_active_docs | xargs rg -n "commit pending|pending implementation|not yet started|: pending$" /dev/null; then
   report_fail "found stale status marker(s) in active docs"
 fi
 
 report_info "checking devdocs index coverage"
-actual_devdocs="$(find devdocs -maxdepth 1 -type f -name '*.md' -printf 'devdocs/%f\n' | sort | grep -v '^devdocs/README.md$' || true)"
+actual_devdocs="$(find devdocs -maxdepth 1 -type f -name '*.md' | sort | grep -v 'devdocs/README.md$' || true)"
 declared_devdocs="$(rg -o "devdocs/[A-Za-z0-9._/-]+\.md" devdocs/README.md | sort -u || true)"
 missing_in_index="$(comm -23 <(printf "%s\n" "$actual_devdocs") <(printf "%s\n" "$declared_devdocs") | sed '/^$/d' || true)"
 if [[ -n "$missing_in_index" ]]; then
