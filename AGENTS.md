@@ -218,3 +218,4 @@ For any task where integration tests are applicable:
    - a real regression / newly introduced bug
    - an intentional behavior change with outdated test expectations
 9. do not update test expectations until that classification is explicit
+10. when updating integration test expectations, report the exact issue fixed for each changed test if 1-3 tests were updated; for more than 3 updated tests, a concise grouped summary is acceptable

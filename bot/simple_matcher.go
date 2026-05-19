@@ -610,6 +610,14 @@ func (g simpleMatcherGroup) literalSequences() [][]string {
 }
 
 func (m InputMatcher) matchInput(input string) inputMatchResult {
+	return m.matchInputCandidates(input, false)
+}
+
+func (m InputMatcher) matchCommandInput(input string) inputMatchResult {
+	return m.matchInputCandidates(input, true)
+}
+
+func (m InputMatcher) matchInputCandidates(input string, allowTrailingDot bool) inputMatchResult {
 	tryExact := func(candidate string) inputMatchResult {
 		if m.re == nil {
 			return inputMatchResult{kind: inputNoMatch}
@@ -621,12 +629,9 @@ func (m InputMatcher) matchInput(input string) inputMatchResult {
 		return inputMatchResult{kind: inputExactMatch, args: matches[1:]}
 	}
 
-	if exact := tryExact(input); exact.kind == inputExactMatch {
-		return exact
-	}
-	collapsed := spaceRe.ReplaceAllString(input, " ")
-	if collapsed != input {
-		if exact := tryExact(collapsed); exact.kind == inputExactMatch {
+	exactCandidates, syntaxCandidates := matcherInputCandidates(input, allowTrailingDot)
+	for _, candidate := range exactCandidates {
+		if exact := tryExact(candidate); exact.kind == inputExactMatch {
 			return exact
 		}
 	}
@@ -634,7 +639,54 @@ func (m InputMatcher) matchInput(input string) inputMatchResult {
 	if m.simple == nil {
 		return inputMatchResult{kind: inputNoMatch}
 	}
-	return m.simple.syntaxMatch(input)
+	for _, candidate := range syntaxCandidates {
+		result := m.simple.syntaxMatch(candidate)
+		if result.kind != inputNoMatch {
+			return result
+		}
+	}
+	return inputMatchResult{kind: inputNoMatch}
+}
+
+func matcherInputCandidates(input string, allowTrailingDot bool) ([]string, []string) {
+	var base []string
+	addUnique := func(list []string, value string) []string {
+		for _, existing := range list {
+			if existing == value {
+				return list
+			}
+		}
+		return append(list, value)
+	}
+
+	base = addUnique(base, input)
+	collapsed := spaceRe.ReplaceAllString(input, " ")
+	base = addUnique(base, collapsed)
+	if !allowTrailingDot {
+		return base, base
+	}
+
+	var stripped []string
+	for _, candidate := range base {
+		trimmed := strings.TrimRight(candidate, " \t\n\r")
+		if !strings.HasSuffix(trimmed, ".") {
+			continue
+		}
+		stripped = addUnique(stripped, strings.TrimSuffix(trimmed, "."))
+	}
+	if len(stripped) == 0 {
+		return base, base
+	}
+
+	exact := append([]string{}, base...)
+	for _, candidate := range stripped {
+		exact = addUnique(exact, candidate)
+	}
+	syntax := append([]string{}, stripped...)
+	for _, candidate := range base {
+		syntax = addUnique(syntax, candidate)
+	}
+	return exact, syntax
 }
 
 type simpleMatcherToken struct {

@@ -86,9 +86,11 @@ func (w *worker) checkPluginMatchersAndRun(pipelineType pipelineType) (messageMa
 				continue
 			}
 			Log(robot.Trace, "Checking '%s' against '%s'", cmsg, matcher.Regex)
-			result := matcher.matchInput(matchMsg)
-			if result.kind == inputNoMatch {
-				result = matcher.matchInput(cmsg)
+			var result inputMatchResult
+			if pipelineType == plugCommand {
+				result = matcher.matchCommandInput(matchMsg)
+			} else {
+				result = matcher.matchInput(matchMsg)
 			}
 			matched := false
 			if result.kind == inputExactMatch {
@@ -212,16 +214,11 @@ func (w *worker) checkWrongLocationCommandMatch() bool {
 		if plugin == nil || task == nil || task.Disabled || len(plugin.Commands) == 0 {
 			continue
 		}
-		cmsg := spaceRe.ReplaceAllString(matchMsg, " ")
 		for _, matcher := range plugin.Commands {
 			if matcher.ChannelOnly && !matchChannelOnly {
 				continue
 			}
-			matches := matcher.re.FindStringSubmatch(matchMsg)
-			if matches == nil {
-				matches = matcher.re.FindStringSubmatch(cmsg)
-			}
-			if matches == nil {
+			if matcher.matchCommandInput(matchMsg).kind != inputExactMatch {
 				continue
 			}
 			hint, ok := w.commandLocationHint(task, plugin, matcher.Command)

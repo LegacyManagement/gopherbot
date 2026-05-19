@@ -130,6 +130,9 @@ Required triage rule:
   - real regression / newly introduced bug
   - intentional behavior change with outdated test expectations
 - Do not update assertions blindly just to make `make test` pass.
+- When updating integration test expectations, report the exact issue fixed for
+  each changed test if 1-3 tests were updated. If more than 3 tests were
+  updated, a concise grouped summary is acceptable.
 - The expected end state for a task is that applicable integration tests run cleanly after this classification work.
 
 Common symptom:

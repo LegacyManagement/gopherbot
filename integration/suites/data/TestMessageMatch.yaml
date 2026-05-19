@@ -46,6 +46,16 @@ cases:
   - input:
       user: alice
       channel: general
+      text: ;hello world.
+    replies:
+      - channel: general
+        text_pattern: Hello, World!
+    events:
+      - CommandTaskRan
+      - ExternalTaskRan
+  - input:
+      user: alice
+      channel: general
       text: ;HELLO   WORLD
     replies:
       - channel: general
@@ -117,6 +127,16 @@ cases:
       user: alice
       channel: random
       text: ;hello robot
+    replies:
+      - channel: random
+        text_pattern: I'm here
+    events:
+      - CommandTaskRan
+      - ExternalTaskRan
+  - input:
+      user: alice
+      channel: random
+      text: ;hello robot.
     replies:
       - channel: random
         text_pattern: I'm here

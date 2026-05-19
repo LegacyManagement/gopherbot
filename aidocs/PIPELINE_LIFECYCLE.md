@@ -91,7 +91,9 @@ Catch-all mode scoping:
 - Intended `SimpleMatcher` semantics for directed commands:
   - case-insensitive by default
   - leading/trailing whitespace tolerated through the normal command compile wrapper
-  - runs of whitespace are still collapsed during dispatch retry, preserving existing whitespace-forgiveness
+  - runs of whitespace are collapsed by the shared input matcher, preserving existing whitespace-forgiveness
+  - directed command matching tries the original input first, then normalized candidates; if the original input does not match and ends with a single sentence-final `.`, command matchers may retry without that final dot
+  - terminal-dot fallback applies only to directed `Commands`; ambient `MessageMatchers`, reply matchers, and job argument matchers do not get this sentence-punctuation retry
   - spaces in the spec act as command separators and match either spaces or dashes in input
   - plain literal text is required and non-capturing
   - `/a|b|c/` is required non-capturing synonym text for choices the plugin does not need to know

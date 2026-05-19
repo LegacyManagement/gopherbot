@@ -443,6 +443,15 @@ func mustCompileSimpleInputMatcher(t *testing.T, spec string) InputMatcher {
 	return matcher
 }
 
+func mustCompileRegexInputMatcher(t *testing.T, regex string) InputMatcher {
+	t.Helper()
+	matcher := InputMatcher{Command: "test", Regex: regex}
+	if err := compileInputMatcher(&matcher, true); err != nil {
+		t.Fatalf("compileInputMatcher(%q): %v", regex, err)
+	}
+	return matcher
+}
+
 func assertInputMatchResult(t *testing.T, result inputMatchResult, wantKind inputMatchKind, wantArgs []string, wantDiagnostic string) {
 	t.Helper()
 	if result.kind != wantKind {
@@ -469,6 +478,34 @@ func TestSimpleMatcherInputMatchExactLabelledChoice(t *testing.T) {
 	assertInputMatchResult(t, result, inputExactMatch, []string{"debug"}, "")
 }
 
+func TestCommandInputMatchTrailingDotFallbackForRegex(t *testing.T) {
+	matcher := mustCompileRegexInputMatcher(t, `(?i:tell me a(?:nother)?(?: knock[- ]knock)? joke)`)
+
+	result := matcher.matchCommandInput("tell me a joke.")
+	assertInputMatchResult(t, result, inputExactMatch, nil, "")
+
+	result = matcher.matchInput("tell me a joke.")
+	assertInputMatchResult(t, result, inputNoMatch, nil, "")
+}
+
+func TestCommandInputMatchTrailingDotDoesNotOverrideExactRegexCapture(t *testing.T) {
+	matcher := mustCompileRegexInputMatcher(t, `(?i:save (.+))`)
+
+	result := matcher.matchCommandInput("save https://example.com/foo.")
+
+	assertInputMatchResult(t, result, inputExactMatch, []string{"https://example.com/foo."}, "")
+}
+
+func TestCommandInputMatchTrailingDotFallbackForSimpleMatcher(t *testing.T) {
+	matcher := mustCompileSimpleInputMatcher(t, "tell me {a} joke")
+
+	result := matcher.matchCommandInput("tell me a joke.")
+	assertInputMatchResult(t, result, inputExactMatch, nil, "")
+
+	result = matcher.matchInput("tell me a joke.")
+	assertInputMatchResult(t, result, inputNoMatch, nil, "")
+}
+
 func TestSimpleMatcherInputMatchRequiredPhraseSynonym(t *testing.T) {
 	matcher := mustCompileSimpleInputMatcher(t, "/set log level|set loglevel/ {to} (level:trace|debug|info|warn|error)")
 
@@ -485,6 +522,14 @@ func TestSimpleMatcherInputMatchSyntaxDiagnosticForLabelledChoice(t *testing.T) 
 	matcher := mustCompileSimpleInputMatcher(t, "set loglevel {to} (level:trace|debug|info|warn|error)")
 
 	result := matcher.matchInput("set loglevel to fine")
+
+	assertInputMatchResult(t, result, inputSyntaxMatch, nil, "Invalid value: \"fine\" for: \"level\"; valid values: trace, debug, info, warn, error.")
+}
+
+func TestCommandInputMatchTrailingDotSyntaxDiagnostic(t *testing.T) {
+	matcher := mustCompileSimpleInputMatcher(t, "set loglevel {to} (level:trace|debug|info|warn|error)")
+
+	result := matcher.matchCommandInput("set loglevel to fine.")
 
 	assertInputMatchResult(t, result, inputSyntaxMatch, nil, "Invalid value: \"fine\" for: \"level\"; valid values: trace, debug, info, warn, error.")
 }
