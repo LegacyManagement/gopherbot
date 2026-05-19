@@ -97,7 +97,7 @@ These apply to `bot/privsep.go`, `bot/calltask.go`, `bot/task_execution.go`, `bo
 **Process privilege invariants:**
 - There are no normal mid-process privilege transitions. Do not reintroduce `raiseThreadPriv`, `raiseThreadPrivExternal`, `dropThreadPriv`, or thread-pinned credential switching.
 - The parent engine runs as the invoking robot user after privsep startup initialization. If it does not, startup/privsep initialization is broken.
-- File-backed extension children commit once, before extension code starts, to either the invoking robot user or the setuid/setgid unprivileged account. An unprivileged child must never regain the invoking user's UID/GID.
+- File-backed extension children commit once, before extension code starts, to either the invoking robot UID or the setuid unprivileged UID. Privsep is UID-only; child GID/group state is intentionally inherited and must not be treated as the privilege boundary.
 
 **Pipeline privilege invariants:**
 - `pipeContext.privileged` is set once at pipeline start from the starter task (`Plugin.Privileged` or `Job.Privileged`) in `startPipeline`. It must not be changed mid-pipeline.
@@ -106,7 +106,7 @@ These apply to `bot/privsep.go`, `bot/calltask.go`, `bot/task_execution.go`, `bo
 **Child process boundary:**
 - Interpreter-backed tasks (Lua/JS/Gsh/Yaegi Go) run in child RPC processes. The parent engine retains all policy, identity, and authorization authority. The child must never receive raw config objects, shared secret values, or privilege tokens it was not explicitly given through the task's configured parameters.
 
-**Testing note:** `privSep` only activates on a setuid/setgid binary. There is no automated test for this path. Changes to `bot/privsep.go` or to privilege callsites in `bot/calltask.go` require manual testing: build the binary, install it as `nobody:nogroup` or the platform equivalent with setuid and setgid bits, run as a non-root user, and verify `robot.log` contains `PRIVSEP - privilege separation initialized; daemon UID/GID <uid>/<gid>, unprivileged UID/GID <uid>/<gid>`. Restore normal ownership and clear setuid/setgid bits when done.
+**Testing note:** `privSep` only activates on a setuid binary. There is no automated test for this path. Changes to `bot/privsep.go` or to privilege callsites in `bot/calltask.go` require manual testing: build the binary, install it owned by `nobody` or the platform equivalent with the setuid bit set and setgid bit clear, run as a non-root user, and verify `robot.log` contains `PRIVSEP - UID-only privilege separation initialized; daemon UID/GID <uid>/<gid>, unprivileged UID <uid> with inherited GID <gid>`. Restore normal ownership and clear setuid bits when done.
 
 ## Security Model Invariants — User Permission Model
 

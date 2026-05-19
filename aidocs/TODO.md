@@ -50,7 +50,7 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
     streaming full output into model context.
   - Suite metadata now supports targeted selectors for subsystem, tag, runtime,
     and tier.
-- [ ] Add privsep-only integration suites that require a real setuid/setgid
+- [ ] Add privsep-only integration suites that require a real setuid
   integration binary. This remains intentionally separate from the normal
   process-backed suite because it requires host-level install state.
 - [ ] Run and record a final clean-build full integration pass before tagging

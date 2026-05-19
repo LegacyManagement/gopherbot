@@ -139,7 +139,7 @@ Catch-all mode scoping:
 - When privilege separation is active, the parent sets `GOPHER_PRIVSEP_CHILD_ROLE`; the child commits to that role before interpreter or external script code starts.
 - `startPipeline` sets pipeline privilege context (`pipeContext.privileged`) from the starter task: `bot/run_pipelines.go`.
 - Adding privileged work to unprivileged pipelines is blocked in pipeline mutation APIs: `bot/robot_pipecmd.go`.
-- Privsep supplementary-group policy is checked during startup before workload execution; see `aidocs/EXECUTION_SECURITY_MODEL.md`.
+- Privsep UID-only self-check validation runs during startup before workload execution; see `aidocs/EXECUTION_SECURITY_MODEL.md`.
 
 For a full execution/security walkthrough, see `aidocs/EXECUTION_SECURITY_MODEL.md`.
 

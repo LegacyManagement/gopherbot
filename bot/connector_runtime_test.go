@@ -145,8 +145,10 @@ func newRuntimeHarness(t *testing.T) *runtimeHarness {
 	h.originalCfg = currentCfg.configuration
 	currentCfg.RUnlock()
 	h.originalIface = interfaces.Connector
+	botLogger.Lock()
 	h.originalLogger = botLogger.logger
 	botLogger.logger = log.New(io.Discard, "", 0)
+	botLogger.Unlock()
 	h.resetRuntimeState()
 	t.Cleanup(h.cleanup)
 	return h
@@ -161,7 +163,9 @@ func (h *runtimeHarness) cleanup() {
 	currentCfg.configuration = h.originalCfg
 	currentCfg.Unlock()
 	interfaces.Connector = h.originalIface
+	botLogger.Lock()
 	botLogger.logger = h.originalLogger
+	botLogger.Unlock()
 }
 
 func (h *runtimeHarness) resetRuntimeState() {

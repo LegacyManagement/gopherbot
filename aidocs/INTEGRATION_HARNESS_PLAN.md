@@ -202,7 +202,7 @@ Behavior changes for operators/users:
 - Eventually, `make integration` will no longer run `go test ./test` directly.
   It will build and/or run `gopherbot-integration`.
 - Privsep integration tests will require explicit local setup because they need
-  a setuid/setgid integration binary.
+  a setuid integration binary.
 
 Migration/fallback plan:
 
@@ -229,7 +229,7 @@ Manual verification:
 
 - Run `gopherbot-integration run-suite TestBotName`.
 - Confirm live interaction output and `result.json`.
-- For privsep, install the binary setuid/setgid nobody and run only the
+- For privsep, install the binary setuid nobody with setgid disabled and run only the
   privsep suite.
 
 ### Documentation Plan
@@ -529,11 +529,11 @@ requires local operator setup.
 
 Candidate suite checks:
 
-- startup rejects unmanaged supplementary groups by default;
-- startup accepts explicitly allowed supplementary groups;
-- unprivileged file-backed extension reports nobody UID/GID;
-- privileged file-backed extension reports invoking robot UID/GID;
+- startup rejects removed privsep supplementary-group config keys as unrecognized keys;
+- unprivileged file-backed extension reports nobody UID and inherited robot GID;
+- privileged file-backed extension reports invoking robot UID and inherited robot GID;
 - unprivileged extension cannot read an invoking-user-owned `0600` file;
+- unprivileged extension cannot read `.env`;
 - privileged extension can read the same file;
 - compiled-in Go extension remains trusted in-process and is not represented as
   an unprivileged execution mode;
@@ -636,7 +636,7 @@ Exit criteria:
 
 ### Phase 5: Privsep Suites
 
-- Add host-setup detection for setuid/setgid `gopherbot-integration`.
+- Add host-setup detection for setuid-only `gopherbot-integration`.
 - Add privsep-only suites.
 - Document setup and cleanup.
 

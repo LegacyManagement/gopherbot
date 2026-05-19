@@ -1,0 +1,32 @@
+name: TestPrivsepGSH
+metadata:
+  subsystems:
+    - security
+    - privsep
+  tags:
+    - setuid-required
+    - uid-only
+  runtimes:
+    - sh
+  tier: focused
+config_dir: test/privsep
+log_name: bottest.log
+cases:
+  - name: privileged-gsh-runs-as-robot-user
+    input:
+      user: alice
+      channel: general
+      text: ;privsep-priv
+    replies:
+      - channel: general
+        text_pattern: 'PRIVSEP CHECK: task=privsep-priv whoami=[^ ]+ uid=[0-9]+ gid=[0-9]+ secret=allow env=allow'
+    replies_only: true
+  - name: unprivileged-gsh-runs-as-nobody
+    input:
+      user: alice
+      channel: general
+      text: ;privsep-unpriv
+    replies:
+      - channel: general
+        text_pattern: 'PRIVSEP CHECK: task=privsep-unpriv whoami=nobody uid=[0-9]+ gid=[0-9]+ secret=deny env=deny'
+    replies_only: true

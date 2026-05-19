@@ -18,7 +18,7 @@ import (
 var privSep bool
 
 var privUID, unprivUID int
-var privGID, unprivGID int
+var privGID int
 
 /* NOTE on privsep and setuid gopherbot:
 Gopherbot "flips" the traditional sense of setuid; gopherbot is normally run
@@ -26,15 +26,16 @@ by the desired user, and installed setuid to a non-privileged account like
 "nobody". This makes it possible to run several instances of gopherbot with
 different UIDs on a single host with a single install.
 
-The parent engine swaps its effective UID/GID back to the invoking user while
-preserving the setuid/setgid nobody saved IDs. File-backed extensions then run
+The parent engine swaps its effective UID back to the invoking user while
+preserving the setuid nobody saved UID. File-backed extensions then run
 in one-shot child processes that permanently commit to either the invoking user
 or the unprivileged account before extension code starts.
 
 There are no mid-process privilege transitions in the process-oriented model.
 The parent engine runs as the invoking user. File-backed extension children
 commit once, before extension code starts, to either the invoking user or the
-setuid/setgid unprivileged account.
+setuid unprivileged UID. Privsep intentionally does not change GID; host-level
+robot privileges should be granted by UID, not by group membership.
 
 */
 
@@ -54,16 +55,13 @@ func nobodyAccountIDs() (int, int, error) {
 	return uid, gid, nil
 }
 
-func panicIfSetuidBinaryTampered(unprivUID, unprivGID int) {
+func panicIfSetuidBinaryTampered(unprivUID int) {
 	nobodyUID, nobodyGID, err := nobodyAccountIDs()
 	if err != nil {
 		panic("binary could be tampered! unable to resolve nobody uid/gid")
 	}
 	if unprivUID != nobodyUID {
 		return
-	}
-	if unprivGID != nobodyGID {
-		panic("binary could be tampered! expected setgid nobody executable for privsep")
 	}
 	execPath, err := os.Executable()
 	if err != nil {
@@ -82,8 +80,8 @@ func panicIfSetuidBinaryTampered(unprivUID, unprivGID int) {
 	if info.Mode()&os.ModeSetuid == 0 {
 		panic("binary could be tampered! expected setuid bit on executable")
 	}
-	if info.Mode()&os.ModeSetgid == 0 {
-		panic("binary could be tampered! expected setgid bit on executable")
+	if info.Mode()&os.ModeSetgid != 0 {
+		panic("binary could be tampered! setgid bit is not supported for UID-only privsep")
 	}
 	if info.Mode().Perm()&0o022 != 0 {
 		panic("binary could be tampered! setuid executable is group/world writable")
@@ -96,7 +94,7 @@ func panicIfSetuidBinaryTampered(unprivUID, unprivGID int) {
 		panic("binary could be tampered! setuid executable owner mismatch")
 	}
 	if int(st.Gid) != nobodyGID {
-		panic("binary could be tampered! setgid executable group mismatch")
+		botStdOutLogger.Printf("PRIVSEP - setuid executable group is %d, not nobody gid %d; UID-only privsep leaves GID unchanged", st.Gid, nobodyGID)
 	}
 }
 
@@ -104,21 +102,15 @@ func init() {
 	uid := unix.Getuid()
 	euid := unix.Geteuid()
 	gid := unix.Getgid()
-	egid := unix.Getegid()
 	if uid != euid {
 		privUID = uid
 		unprivUID = euid
 		privGID = gid
-		unprivGID = egid
-		panicIfSetuidBinaryTampered(unprivUID, unprivGID)
-		unix.Umask(0022)
+		panicIfSetuidBinaryTampered(unprivUID)
+		unix.Umask(0027)
 
-		// Keep the parent engine on the invoking identity while preserving the
-		// setuid/setgid nobody saved IDs for child process role commits.
-		if err := syscall.Setregid(-1, privGID); err != nil {
-			botStdOutLogger.Printf("PRIVSEP - error setting regid in init: %v", err)
-			return
-		}
+		// Keep the parent engine on the invoking UID while preserving the
+		// setuid nobody saved UID for child process role commits.
 		if err := syscall.Setreuid(-1, privUID); err != nil {
 			botStdOutLogger.Printf("PRIVSEP - error setting reuid in init: %v", err)
 			return
@@ -155,21 +147,12 @@ func init() {
 func commitPrivsepChildRole(role privsepChildRole) error {
 	switch role {
 	case privsepRolePrivileged:
-		if err := syscall.Setregid(privGID, privGID); err != nil {
-			return fmt.Errorf("setregid privileged: %w", err)
-		}
 		if err := syscall.Setreuid(privUID, privUID); err != nil {
 			return fmt.Errorf("setreuid privileged: %w", err)
 		}
 	case privsepRoleUnprivileged:
-		if err := syscall.Setegid(unprivGID); err != nil {
-			return fmt.Errorf("setegid unprivileged: %w", err)
-		}
 		if err := syscall.Seteuid(unprivUID); err != nil {
 			return fmt.Errorf("seteuid unprivileged: %w", err)
-		}
-		if err := syscall.Setregid(unprivGID, unprivGID); err != nil {
-			return fmt.Errorf("setregid unprivileged: %w", err)
 		}
 		if err := syscall.Setreuid(unprivUID, unprivUID); err != nil {
 			return fmt.Errorf("setreuid unprivileged: %w", err)
@@ -202,7 +185,7 @@ func checkprivsep() {
 		ruid := unix.Getuid()
 		euid := unix.Geteuid()
 		tid := unix.Gettid()
-		Log(robot.Info, "PRIVSEP - privilege separation initialized; daemon UID/GID %d/%d, unprivileged UID/GID %d/%d; thread %d r/euid: %d/%d", privUID, privGID, unprivUID, unprivGID, tid, ruid, euid)
+		Log(robot.Info, "PRIVSEP - UID-only privilege separation initialized; daemon UID/GID %d/%d, unprivileged UID %d with inherited GID %d; thread %d r/euid: %d/%d", privUID, privGID, unprivUID, privGID, tid, ruid, euid)
 	} else {
 		Log(robot.Info, "PRIVSEP - Privilege separation not in use")
 	}

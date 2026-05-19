@@ -131,24 +131,26 @@ privileged file-backed extension or trusted compiled-in code. If it needs
 unprivileged `nobody` authority, it must run as an unprivileged file-backed
 extension child.
 
-## 2026-04-28 Privsep Child Process And Supplementary Groups
+## 2026-04-28 Privsep Child Process And UID-Only Separation
 
 Privilege separation for file-backed extensions now uses one-shot child processes. The parent engine selects a child role, and `pipeline-child-exec` / `pipeline-child-rpc` commit to that role before running external scripts or built-in interpreters.
 
-New root `robot.yaml` config surface:
+The earlier root `robot.yaml` supplementary-group keys have been removed:
 
 ```yaml
 PrivsepAllowAllSupplementaryGroups: false
 PrivsepAllowedSupplementaryGroups: []
 ```
 
-Installed `conf/robot.yaml` defaults to fail-closed supplementary-group policy. Existing setuid privsep deployments must verify their setuid/setgid install and retained groups before upgrading.
+Remove those keys from custom robot configuration before upgrading. If present, they fail startup through the normal unrecognized-key validation.
+
+Privilege separation is now UID-only. Existing setuid privsep deployments must verify their install no longer sets the setgid bit.
 
 Upgrade actions:
 
-1. Install the binary with both setuid and setgid bits for the unprivileged account, normally `nobody:nobody`.
-2. Prefer granting privileged host access directly to the invoking robot user, not through broad groups such as `%wheel` or `%admin`.
-3. If the platform retains supplementary groups for unprivileged children, either list the numeric group IDs in `PrivsepAllowedSupplementaryGroups` or explicitly set `PrivsepAllowAllSupplementaryGroups: true` after accepting the weaker boundary.
+1. Install the binary owned by the unprivileged account, normally `nobody`, with setuid enabled and setgid disabled.
+2. Prefer granting privileged host access directly to the invoking robot user by UID, not through broad groups such as `%wheel` or `%admin`.
+3. Ensure `.env` is owner-readable only; current startup forces mode `0400` because it contains `GOPHER_ENCRYPTION_KEY`.
 4. On Linux EC2 deployments, consider UID-scoped firewall rules blocking the unprivileged UID from instance metadata endpoints (`169.254.169.254` and `[fd00:ec2::254]` when IPv6 IMDS is enabled).
 
 ## 2026-02-20 BasicMarkdown Default Format Update

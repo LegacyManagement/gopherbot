@@ -6,7 +6,7 @@ This document describes how pipeline execution and privilege separation currentl
 
 - Message/job-triggered pipeline execution model.
 - Per-task execution threading model.
-- Current privilege-separation behavior (setuid-nobody startup plus one-shot child role commitment for file-backed extensions).
+- Current privilege-separation behavior (UID-only setuid-nobody startup plus one-shot child role commitment for file-backed extensions).
 
 ## High-Level Flow
 
@@ -50,8 +50,9 @@ On supported Unix platforms (`bot/privsep.go` for Linux/BSD and `bot/privsep_dar
 - If `uid != euid`, engine treats:
   - `privUID = uid` (invoking user)
   - `unprivUID = euid` (setuid account, commonly `nobody`)
-- It also records `privGID` and `unprivGID`.
-- Startup swaps the parent engine back to the invoking effective UID/GID while preserving the setuid/setgid unprivileged saved IDs for later child commits.
+- It also records the invoking robot GID.
+- Startup swaps the parent engine back to the invoking effective UID while preserving the setuid unprivileged saved UID for later child commits.
+- Startup sets `umask 027` when privsep is active. New files are not world-readable, and group-readable files are not group-writable by default.
 - `privSep` is enabled only when this initialization succeeds.
 
 Runtime visibility is logged through `checkprivsep()` in startup (`bot/start.go`).
@@ -60,28 +61,30 @@ After pre-connect config load, startup validates the unprivileged child role wit
 
 - the self-check child commits to the unprivileged role
 - the child reports UID/GID/supplementary groups as JSON
-- startup fails closed if UID/GID are wrong or retained supplementary groups are outside `PrivsepAllowAllSupplementaryGroups` / `PrivsepAllowedSupplementaryGroups`
+- startup fails closed if UID/EUID are wrong or if the child GID changes instead of remaining the invoking robot user's GID
 
 Non-robot CLI commands skip this startup self-check because they run as the
 invoking user and do not start connector runtimes or file-backed extension
 children. Internal child commands still commit to the requested role before
 running child work.
 
-Installed `conf/robot.yaml` defaults to `PrivsepAllowAllSupplementaryGroups: false` and `PrivsepAllowedSupplementaryGroups: []`.
+The earlier `PrivsepAllowAllSupplementaryGroups` and `PrivsepAllowedSupplementaryGroups` config keys have been removed. If present, they fail configuration loading through the normal unrecognized-key path.
 
 ## Child Role Commitment
 
 File-backed extension children have one role:
 
-- `privileged`: permanently commits to the invoking robot user UID/GID
-- `unprivileged`: permanently commits to the setuid/setgid unprivileged UID/GID
+- `privileged`: permanently commits to the invoking robot user UID
+- `unprivileged`: permanently commits to the setuid unprivileged UID
 
 The parent chooses the role from engine policy. The child must not decide whether privileged execution is allowed.
 
 Platform mechanics differ:
 
 - Linux/BSD and macOS both use process-level credential changes in the child role preamble.
-- The unprivileged role first switches effective UID/GID to the saved setuid/setgid account, then permanently sets real/effective UID/GID to that account before extension code starts.
+- The unprivileged role first switches effective UID to the saved setuid account, then permanently sets real/effective UID to that account before extension code starts.
+- Privsep intentionally does not change primary or supplementary groups. Unprivileged children retain the invoking robot GID/group context so they can read/execute group-readable robot extension files. Host capabilities that must not be available to unprivileged children must be granted by UID, not by group membership.
+- Startup forces `.env` to mode `0400` before loading it, because `.env` contains the robot encryption key and must not be readable through retained group access.
 - There are no normal mid-process raise/drop operations. Parent-owned work runs as the invoking robot user; unprivileged work belongs in a committed child process.
 
 ## Task-Type Execution Behavior
@@ -220,7 +223,7 @@ The concern is not command visibility (hard to hide) but message routing confide
 - Compiled-in tasks (`taskGo`, `bot/*`) still execute in the engine process.
 - Lua, JavaScript, Gopherbot shell, external Go interpreter-backed tasks, and external executable tasks gain process isolation via parent/child execution.
 - Cancellation semantics for long-running interpreter tasks are now available through admin `kill` and timeout watchdogs, but fine-grained task-level cancellation (beyond process termination) remains future work.
-- Privsep does not drop supplementary groups on platforms that cannot do so without root; startup fails closed unless retained groups are explicitly allowed.
+- Privsep is UID-only. It does not try to drop or allow-list primary/supplementary groups, so group membership is not a safe boundary between privileged and unprivileged extension code.
 - Compiled-in Go extensions are trusted engine code and are not supported as unprivileged sandboxed extensions.
 - Privilege separation is implemented on Linux/BSD (`bot/privsep.go`) and macOS/Darwin (`bot/privsep_darwin.go`).
 - Other platforms use `bot/privsep_unsupported.go`: `privSep` remains false, child role commitment is unavailable, and startup logs that privilege separation is not available on that platform.

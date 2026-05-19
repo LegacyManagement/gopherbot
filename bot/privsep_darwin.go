@@ -15,9 +15,9 @@ import (
 var privSep bool
 
 var privUID, unprivUID int
-var privGID, unprivGID int
+var privGID int
 
-func panicIfDarwinSetuidBinaryTampered(unprivUID, unprivGID int) {
+func panicIfDarwinSetuidBinaryTampered(unprivUID int) {
 	execPath, err := os.Executable()
 	if err != nil {
 		panic("binary could be tampered! unable to resolve executable path")
@@ -35,8 +35,8 @@ func panicIfDarwinSetuidBinaryTampered(unprivUID, unprivGID int) {
 	if info.Mode()&os.ModeSetuid == 0 {
 		panic("binary could be tampered! expected setuid bit on executable")
 	}
-	if info.Mode()&os.ModeSetgid == 0 {
-		panic("binary could be tampered! expected setgid bit on executable")
+	if info.Mode()&os.ModeSetgid != 0 {
+		panic("binary could be tampered! setgid bit is not supported for UID-only privsep")
 	}
 	if info.Mode().Perm()&0o022 != 0 {
 		panic("binary could be tampered! setuid executable is group/world writable")
@@ -48,31 +48,22 @@ func panicIfDarwinSetuidBinaryTampered(unprivUID, unprivGID int) {
 	if int(st.Uid) != unprivUID {
 		panic("binary could be tampered! setuid executable owner mismatch")
 	}
-	if int(st.Gid) != unprivGID {
-		panic("binary could be tampered! setgid executable group mismatch")
-	}
 }
 
 func init() {
 	uid := syscall.Getuid()
 	euid := syscall.Geteuid()
 	gid := syscall.Getgid()
-	egid := syscall.Getegid()
 	if uid != euid {
 		privUID = uid
 		unprivUID = euid
 		privGID = gid
-		unprivGID = egid
-		panicIfDarwinSetuidBinaryTampered(unprivUID, unprivGID)
-		syscall.Umask(0022)
+		panicIfDarwinSetuidBinaryTampered(unprivUID)
+		syscall.Umask(0027)
 
-		// Darwin keeps the saved setuid/setgid values when only the effective
-		// IDs are swapped back to the invoking user. Children re-exec the same
-		// setuid binary and permanently commit before extension code starts.
-		if err := syscall.Setregid(-1, privGID); err != nil {
-			botStdOutLogger.Printf("PRIVSEP - error setting regid in init: %v", err)
-			return
-		}
+		// Darwin keeps the saved setuid value when only the effective UID is
+		// swapped back to the invoking user. Children re-exec the same setuid
+		// binary and permanently commit before extension code starts.
 		if err := syscall.Setreuid(-1, privUID); err != nil {
 			botStdOutLogger.Printf("PRIVSEP - error setting reuid in init: %v", err)
 			return
@@ -103,21 +94,12 @@ func init() {
 func commitPrivsepChildRole(role privsepChildRole) error {
 	switch role {
 	case privsepRolePrivileged:
-		if err := syscall.Setregid(privGID, privGID); err != nil {
-			return fmt.Errorf("setregid privileged: %w", err)
-		}
 		if err := syscall.Setreuid(privUID, privUID); err != nil {
 			return fmt.Errorf("setreuid privileged: %w", err)
 		}
 	case privsepRoleUnprivileged:
-		if err := syscall.Setegid(unprivGID); err != nil {
-			return fmt.Errorf("setegid unprivileged: %w", err)
-		}
 		if err := syscall.Seteuid(unprivUID); err != nil {
 			return fmt.Errorf("seteuid unprivileged: %w", err)
-		}
-		if err := syscall.Setregid(unprivGID, unprivGID); err != nil {
-			return fmt.Errorf("setregid unprivileged: %w", err)
 		}
 		if err := syscall.Setreuid(unprivUID, unprivUID); err != nil {
 			return fmt.Errorf("setreuid unprivileged: %w", err)
@@ -144,7 +126,7 @@ func currentPrivsepIdentityReport() (privsepIdentityReport, error) {
 
 func checkprivsep() {
 	if privSep {
-		Log(robot.Info, "PRIVSEP - privilege separation initialized; daemon UID/GID %d/%d, unprivileged UID/GID %d/%d; r/euid: %d/%d", privUID, privGID, unprivUID, unprivGID, syscall.Getuid(), syscall.Geteuid())
+		Log(robot.Info, "PRIVSEP - UID-only privilege separation initialized; daemon UID/GID %d/%d, unprivileged UID %d with inherited GID %d; r/euid: %d/%d", privUID, privGID, unprivUID, privGID, syscall.Getuid(), syscall.Geteuid())
 	} else {
 		Log(robot.Info, "PRIVSEP - Privilege separation not in use")
 	}

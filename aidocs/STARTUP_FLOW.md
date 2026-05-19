@@ -294,12 +294,7 @@ Identity provider definitions are loaded from the root `robot.yaml` key `Identit
 - Providers reference a `CredentialParameterSet` for refresh-time client credentials; the provider registry should not embed secrets directly.
 - The registry is configuration-only at startup; linked identity state lives in the brain at runtime.
 
-### Privilege-Separation Supplementary Group Policy
-
-Root `robot.yaml` accepts:
-
-- `PrivsepAllowAllSupplementaryGroups` (bool, default `false` in installed `conf/robot.yaml`)
-- `PrivsepAllowedSupplementaryGroups` (list of numeric group IDs, default `[]` in installed `conf/robot.yaml`)
+### UID-Only Privilege Separation
 
 During robot startup, after pre-connect configuration load and before brain/connectors/workloads, `initBot()` validates active privilege separation with an internal `privsep-self-check` child. The child commits to the unprivileged role and reports real/effective UID, primary GID, and supplementary groups.
 
@@ -307,11 +302,14 @@ Non-robot CLI commands skip this self-check. CLI operations run as the invoking 
 
 Startup fails closed when:
 
-- the unprivileged child does not report the expected UID/GID
-- any retained supplementary group is not explicitly allowed
-- `PrivsepAllowedSupplementaryGroups` contains a negative group ID
+- the unprivileged child does not report the expected unprivileged UID/EUID
+- the child primary GID changes instead of remaining the invoking robot user's GID
 
-`PrivsepAllowAllSupplementaryGroups: true` allows startup to continue with retained groups, but logs an audit warning because that weakens the unprivileged boundary.
+Privilege separation is UID-only on Linux/BSD and macOS. The binary should be installed owned by the unprivileged account with the setuid bit, but without setgid. The parent engine runs as the invoking robot UID, and unprivileged file-backed children run as the unprivileged UID while retaining the invoking robot GID and supplementary groups.
+
+This means host privilege boundaries must be based on UID, not group membership. Startup sets `umask 027` while privsep is active so newly created files are readable by the robot's group but not writable by it, and `.env` is forced to mode `0400` before loading so unprivileged children cannot read the robot encryption key through group access.
+
+The earlier root `robot.yaml` keys `PrivsepAllowAllSupplementaryGroups` and `PrivsepAllowedSupplementaryGroups` are removed. If present, they fail configuration loading through the normal unrecognized-key path.
 
 ### Config Merge Semantics (Installed Defaults + Custom Overrides)
 

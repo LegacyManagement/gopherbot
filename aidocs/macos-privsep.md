@@ -62,6 +62,8 @@ The child process handles only:
 
 The child must not decide whether privileged execution is allowed. It receives only the parent-selected execution role and task-specific execution context.
 
+Privilege separation is UID-only. Child startup verifies the selected UID and verifies that the primary GID remains the invoking robot user's GID. It intentionally does not switch to the unprivileged account's primary GID and does not clear supplementary groups.
+
 ## Execution Routing
 
 Current parent-owned task policy remains authoritative:
@@ -80,9 +82,9 @@ Under the process-oriented model:
 
 The current `pipeline-child-exec` and `pipeline-child-rpc` paths are the natural implementation targets. A shared child credential preamble should run before either child path starts interpreter/runtime work.
 
-## macOS Proof Of Concept
+## macOS UID-Only Model
 
-The local proof of concept in `../go-test` demonstrates the core Darwin credential sequence for a binary owned by `nobody:nobody` with setuid and setgid bits set.
+The current Darwin model uses a binary owned by `nobody` with the setuid bit set and the setgid bit clear.
 
 At initial exec:
 
@@ -90,71 +92,40 @@ At initial exec:
 - `EUID` is `nobody`
 - saved UID is `nobody`
 - `RGID` is the invoking primary group
-- `EGID` is `nobody`
+- `EGID` is the invoking primary group
 
-The parent swaps only effective credentials back to the invoking user:
+The parent swaps only the effective UID back to the invoking user:
 
 - `setreuid(-1, ruid)`
-- `setregid(-1, rgid)`
 
-On Darwin this leaves the saved UID/GID as `nobody`, giving the parent enough state to re-exec the setuid binary for children without ever using root.
+On Darwin this leaves the saved UID as `nobody`, giving the parent enough state to re-exec the setuid binary for children without ever using root.
 
 Each child re-execs the same setuid binary so the kernel restores effective/saved credentials to `nobody`, then permanently commits:
 
 - invoking-user child:
-  - `setregid(rgid, rgid)`
   - `setreuid(ruid, ruid)`
 - nobody child:
-  - `setegid(nobodyGID)`
   - `seteuid(nobodyUID)`
-  - `setregid(nobodyGID, nobodyGID)`
   - `setreuid(nobodyUID, nobodyUID)`
 
-The reported proof-of-concept run showed:
+Expected state:
 
-- parent initial `RUID=502`, `EUID=-2`
-- parent after swap `EUID=502`
-- invoking-user child `RUID=502`, `EUID=502`, `RGID=20`, `EGID=20`
-- unprivileged child `RUID=-2`, `EUID=-2`, `RGID=-2`, `EGID=-2`
+- parent initial `RUID=<robot uid>`, `EUID=<nobody uid>`
+- parent after swap `EUID=<robot uid>`
+- invoking-user child `RUID=<robot uid>`, `EUID=<robot uid>`, `RGID=<robot gid>`, `EGID=<robot gid>`
+- unprivileged child `RUID=<nobody uid>`, `EUID=<nobody uid>`, `RGID=<robot gid>`, `EGID=<robot gid>`
 
-This validates the UID and primary-GID direction for macOS, but it does not complete the production security model by itself.
+This validates the UID direction for macOS while preserving group readability for robot extension files.
 
-## Open Security Issue: Supplementary Groups
+## Group Boundary
 
-The proof-of-concept unprivileged child retained the invoking user's supplementary groups.
+Unprivileged children retain the invoking user's primary and supplementary groups. This is intentional in the UID-only model so extensions can read and execute files created with the robot user's group, especially when startup uses `umask 027`.
 
-That means the child was not fully equivalent to a fresh `nobody:nobody` login context. It had nobody as real/effective UID and primary GID, but it could still inherit access through group-readable filesystem permissions.
-
-Darwin does not provide a practical non-root way for this inverted setuid-nobody model to drop those supplementary groups after exec. The production model therefore needs an explicit administrator policy for retained groups.
-
-Implementation must resolve this before claiming acceptable unprivileged isolation:
-
-- clear or replace supplementary groups before extension execution on platforms where the platform allows it
-- or fail startup unless retained supplementary groups are explicitly allowed by configuration
-- or explicitly reject privilege separation on that platform/configuration
-
-Until this is implemented, the macOS proof of concept should be treated as proof that process-oriented UID commitment can work, not proof that the full unprivileged execution boundary is complete.
+This also means group membership is not a privilege-separation boundary. Robot privileges that must not be available to unprivileged children must be granted directly to the invoking robot UID, not through groups. `.env` is forced to mode `0400` before loading because it contains `GOPHER_ENCRYPTION_KEY` and must not be readable through retained group access.
 
 ## Configuration
 
-Root `robot.yaml` privilege-separation controls:
-
-```yaml
-PrivsepAllowAllSupplementaryGroups: false
-PrivsepAllowedSupplementaryGroups: []
-```
-
-Semantics:
-
-- `PrivsepAllowAllSupplementaryGroups` defaults to `false`.
-- `PrivsepAllowedSupplementaryGroups` is a list of numeric group IDs that may remain in the unprivileged child supplementary group set.
-- When privilege separation is active, startup must run a self-check that observes the effective unprivileged child UID, primary GID, and supplementary groups.
-- Startup must fail closed if any retained supplementary group is not explicitly handled by policy.
-- If `PrivsepAllowAllSupplementaryGroups: true`, startup may continue with all retained groups, but must log a high-severity warning/audit line because this weakens the unprivileged boundary.
-- If `PrivsepAllowAllSupplementaryGroups: false`, startup may continue only when every retained supplementary group is either platform-required for the unprivileged identity or listed in `PrivsepAllowedSupplementaryGroups`.
-- Config parsing should reject negative group IDs in `PrivsepAllowedSupplementaryGroups`; use the unsigned/integer value reported by the platform probe for groups such as macOS `nobody`.
-
-Installed `conf/robot.yaml` sets the strict defaults above. `robot.skel/conf/robot.yaml` includes commented examples for allowing all retained groups or listing specific numeric group IDs. A robot administrator should have to opt in before unprivileged extensions retain any group-derived authority.
+There is no active privsep group allow-list configuration. The earlier `PrivsepAllowAllSupplementaryGroups` and `PrivsepAllowedSupplementaryGroups` keys have been removed and now fail as unrecognized config keys.
 
 ## Operator Privilege Guidance
 
@@ -196,20 +167,19 @@ This is an operational hardening recommendation, not a substitute for the engine
 
 Expected operating model:
 
-1. Install the binary owned by `nobody:nobody` with setuid and setgid bits.
+1. Install the binary owned by `nobody` with the setuid bit set and setgid bit clear.
 2. At startup, detect the inverted setuid-nobody state.
 3. Move the parent engine back to the invoking user while preserving the ability to re-exec children through the setuid binary.
-4. Run a startup self-check for unprivileged child UID/GID and supplementary group policy.
+4. Run a startup self-check for unprivileged child UID and inherited robot GID.
 5. For each file-backed extension invocation, start a child by re-execing the same binary with an internal child command.
 6. In the child command, permanently commit to the requested role before starting any interpreter, RPC loop, or external executable.
-7. Verify real/effective UID and GID, and fail closed if they do not match the requested role.
+7. Verify real/effective UID and inherited GID, and fail closed if they do not match the UID-only role contract.
 
 macOS-specific validation still required:
 
-- supplementary group handling
 - child process group kill behavior
 - code signing, quarantine, and filesystem ownership interactions for setuid binaries
-- behavior when `nobody` has UID/GID `-2` as exposed through Go/syscall APIs
+- behavior when `nobody` has UID `-2` as exposed through Go/syscall APIs
 
 ### Linux/BSD
 
@@ -228,9 +198,9 @@ The low-level Linux/BSD credential sequence may differ from macOS and should be 
 
 - One child invocation has exactly one privilege class.
 - No child process may alternate between privileged and unprivileged work.
-- A child must verify and report, or at minimum fail closed on, real/effective UID and GID mismatch before executing extension code.
-- Supplementary groups must be explicitly handled before the unprivileged role is considered complete.
-- Privsep startup must fail closed when retained supplementary groups are outside administrator policy.
+- A child must verify and report, or at minimum fail closed on, real/effective UID mismatch and unexpected primary GID changes before executing extension code.
+- Privsep is UID-only. Primary and supplementary groups are intentionally retained, so they must not be used as the robot privilege boundary.
+- `.env` must remain owner-readable only because it contains the robot encryption key.
 - Parent must pass only task-specific environment, argv, working directory, and already-selected parameters.
 - Parent must not pass raw robot config, provider registries, broad parameter sets, or privilege tokens to children.
 - Parent-owned RPC remains the only path for Robot API calls from interpreter-backed children.
@@ -246,15 +216,15 @@ The low-level Linux/BSD credential sequence may differ from macOS and should be 
 5. Route external plugin default-config retrieval through the same child boundary. (Implemented)
 6. Remove normal task execution calls to legacy raise/drop helpers after all file-backed execution paths use committed child processes. (Implemented)
 7. Retain only minimal startup/child-creation privilege setup code.
-8. Add `robot.yaml` supplementary-group policy parsing and startup self-check failure behavior. (Implemented)
-9. Enable macOS only after manual validation covers UID, primary GID, supplementary groups, process-group cleanup, and setuid binary lifecycle.
+8. Remove the earlier `robot.yaml` supplementary-group policy keys now that privsep is UID-only. (Implemented)
+9. Enable macOS only after manual validation covers UID, inherited primary GID, process-group cleanup, and setuid binary lifecycle.
 
 ## Validation Plan
 
 Automated tests:
 
 - unit tests for role parsing and UID/GID validation logic
-- unit tests for supplementary-group policy parsing and fail-closed startup decisions
+- unit tests for UID-only self-check validation
 - task-routing tests confirming privileged and unprivileged pipelines select the expected child role
 - timeout/kill tests confirming process group cleanup
 - regression tests for parameter and secret scoping
@@ -262,13 +232,13 @@ Automated tests:
 Manual setuid tests:
 
 - build the binary
-- set owner/setuid/setgid according to the target platform procedure
+- set owner/setuid according to the target platform procedure and ensure setgid is not set
 - run as a non-root robot user
 - verify startup logs show expected parent and child UIDs/GIDs
-- verify supplementary groups for unprivileged children are cleared or otherwise match the accepted security model
-- verify startup fails when retained supplementary groups are present and not allowed by policy
+- verify unprivileged children keep the robot GID and run with the unprivileged UID
 - run privileged and unprivileged probe extensions
 - verify unprivileged probes cannot access privileged-only files or secrets
+- verify unprivileged probes cannot read `.env`
 - on Linux EC2 deployments, verify UID-scoped firewall rules block IMDS access from the unprivileged UID
 - restore binary ownership and setuid bits after testing
 

@@ -357,12 +357,12 @@ func startConnectorRuntime(protocol string, required bool) error {
 			}
 		}
 		runtimeConnectors.Unlock()
-		close(done)
 		if shouldLogError && !state.shuttingDown {
 			Log(robot.Error, "Connector '%s' exited unexpectedly", protocol)
 		} else {
 			Log(robot.Info, "Connector '%s' stopped", protocol)
 		}
+		close(done)
 	}(p, conn, stop, done)
 	Log(robot.Info, "Connector '%s' started", p)
 	return nil

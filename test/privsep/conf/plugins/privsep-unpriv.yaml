@@ -1,0 +1,3 @@
+Commands:
+- Regex: (?i:privsep-unpriv)
+  Command: check

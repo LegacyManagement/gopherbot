@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
-
-	"github.com/lnxjedi/gopherbot/robot"
 )
 
 const (
@@ -21,11 +18,6 @@ const (
 )
 
 type privsepChildRole string
-
-type privsepSupplementaryGroupPolicy struct {
-	allowAll bool
-	allowed  []int
-}
 
 type privsepIdentityReport struct {
 	UID    int   `json:"uid"`
@@ -121,33 +113,17 @@ func runPrivsepSelfCheck() int {
 	return 0
 }
 
-func validatePrivsepSupplementaryGroupPolicy(policy privsepSupplementaryGroupPolicy, report privsepIdentityReport) error {
-	if policy.allowAll {
-		return nil
+func validatePrivsepIdentityReport(report privsepIdentityReport) error {
+	if report.UID != unprivUID || report.EUID != unprivUID {
+		return fmt.Errorf("privsep self-check unprivileged child UID mismatch: uid/euid %d/%d, want %d/%d", report.UID, report.EUID, unprivUID, unprivUID)
 	}
-	allowed := make(map[int64]struct{}, len(policy.allowed)+2)
-	allowed[int64(unprivGID)] = struct{}{}
-	allowed[int64(uint32(unprivGID))] = struct{}{}
-	for _, gid := range policy.allowed {
-		if gid < 0 {
-			return fmt.Errorf("PrivsepAllowedSupplementaryGroups contains negative group ID %d", gid)
-		}
-		allowed[int64(gid)] = struct{}{}
-	}
-	var disallowed []string
-	for _, gid := range report.Groups {
-		if _, ok := allowed[int64(gid)]; ok {
-			continue
-		}
-		disallowed = append(disallowed, strconv.Itoa(gid))
-	}
-	if len(disallowed) > 0 {
-		return fmt.Errorf("privsep unprivileged child retained disallowed supplementary groups: %s", strings.Join(disallowed, ", "))
+	if report.GID != privGID || report.EGID != privGID {
+		return fmt.Errorf("privsep self-check child GID changed: gid/egid %d/%d, want inherited robot gid %d/%d", report.GID, report.EGID, privGID, privGID)
 	}
 	return nil
 }
 
-func validatePrivsepStartupPolicy(policy privsepSupplementaryGroupPolicy) error {
+func validatePrivsepStartupPolicy() error {
 	if !privSep {
 		return nil
 	}
@@ -155,19 +131,7 @@ func validatePrivsepStartupPolicy(policy privsepSupplementaryGroupPolicy) error 
 	if err != nil {
 		return err
 	}
-	if report.UID != unprivUID || report.EUID != unprivUID {
-		return fmt.Errorf("privsep self-check unprivileged child UID mismatch: uid/euid %d/%d, want %d/%d", report.UID, report.EUID, unprivUID, unprivUID)
-	}
-	if report.GID != unprivGID || report.EGID != unprivGID {
-		return fmt.Errorf("privsep self-check unprivileged child GID mismatch: gid/egid %d/%d, want %d/%d", report.GID, report.EGID, unprivGID, unprivGID)
-	}
-	if err := validatePrivsepSupplementaryGroupPolicy(policy, report); err != nil {
-		return err
-	}
-	if policy.allowAll && len(report.Groups) > 0 {
-		Log(robot.Audit, "PRIVSEP - PrivsepAllowAllSupplementaryGroups enabled; unprivileged child retained groups: %v", report.Groups)
-	}
-	return nil
+	return validatePrivsepIdentityReport(report)
 }
 
 func runPrivsepStartupSelfCheck() (privsepIdentityReport, error) {

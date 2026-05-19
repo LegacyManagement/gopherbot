@@ -187,10 +187,16 @@ func Start(v VersionInfo) {
 	// NOTE: the subdirectories in test/ all use private/environment
 	for _, ef := range []string{"private/environment", ".env"} {
 		if es, err := os.Stat(ef); err == nil {
-			em := es.Mode()
-			if (uint32(em) & 0077) != 0 {
-				mask := os.FileMode(0700)
-				want := em & mask
+			em := es.Mode().Perm()
+			if ef == ".env" {
+				if em != 0400 {
+					if err := os.Chmod(ef, 0400); err != nil {
+						log.Fatalf("Invalid file mode '%o' on environment file '%s', can't fix: %v", em, ef, err)
+					}
+					fixed = append(fixed, ef)
+				}
+			} else if (uint32(em) & 0077) != 0 {
+				want := em & os.FileMode(0700)
 				if err := os.Chmod(ef, want); err != nil {
 					log.Fatalf("Invalid file mode '%o' on environment file '%s', can't fix: %v", em, ef, err)
 				}

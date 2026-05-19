@@ -1,0 +1,27 @@
+AdminContact: "Privsep Test, <privsep@example.org>"
+DefaultChannels: [ "general" ]
+DefaultJobChannel: general
+JoinChannels: [ ]
+AdminUsers: [ "alice" ]
+Alias: ";"
+PrimaryProtocol: {{ env "GOPHER_PROTOCOL" | default "test" }}
+
+BotInfo:
+  UserName: bender
+  FullName: Bender Rodriguez
+
+UserRoster:
+- UserName: "alice"
+  UserID: "u0001"
+
+LocalPort: 0
+ExternalPlugins:
+  "privsep-priv":
+    Path: plugins/privsep_probe.gsh
+    Privileged: true
+  "privsep-unpriv":
+    Path: plugins/privsep_probe.gsh
+    Privileged: false
+
+WorkSpace: workspace
+Brain: mem

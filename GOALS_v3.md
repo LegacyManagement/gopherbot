@@ -236,8 +236,9 @@ Design direction:
 - Keep compiled-in Go extensions in-process as trusted engine code.
 - Do not support running compiled-in Go extensions as unprivileged code.
 - Do not use thread-pinned credential switching. Privilege separation is process-scoped: parent work runs as the invoking robot user, and file-backed children permanently commit before extension code starts.
-- Treat supplementary group handling as a release-blocking security detail: default startup should fail closed unless retained groups are explicitly allowed through `PrivsepAllowAllSupplementaryGroups` or `PrivsepAllowedSupplementaryGroups`.
-- Document that privileged host access should be granted directly to the invoking robot user, not through broad groups that unprivileged children may retain.
+- Privilege separation is UID-only: the binary is setuid to the unprivileged account, not setgid, and children retain the invoking robot GID/group context for group-readable extension files.
+- Document that privileged host access should be granted directly to the invoking robot user by UID, not through broad groups that unprivileged children may retain.
+- Keep `.env` owner-readable only (`0400`) because it contains the robot encryption key and must not be readable by UID-only unprivileged children through group permissions.
 - On Linux EC2 deployments, document UID-scoped firewall hardening for instance metadata endpoints so unprivileged children cannot fetch instance role credentials.
 
 Design note: see `aidocs/macos-privsep.md`.
