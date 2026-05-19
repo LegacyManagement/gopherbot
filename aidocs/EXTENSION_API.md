@@ -69,6 +69,7 @@ Prompt timeout semantics:
 - `CheckinDatum(key, locktoken string)`
 - `UpdateDatum(key, locktoken string, datum interface{}) RetVal`
 - `DeleteDatum(key string) RetVal`
+- Long-term datum keys may contain ASCII letters, digits, underscore, colon, and hyphen.
 - `Remember(key, value string, shared bool)`
 - `RememberThread(key, value string, shared bool)`
 - `RememberContext(context, value string)`
