@@ -2,7 +2,6 @@ package suites
 
 import "testing"
 
-
 func TestYAMLInputUserNamesResolveToConnectorIDs(t *testing.T) {
 	c, err := yamlCaseToCase(yamlCase{
 		Input: yamlMessage{

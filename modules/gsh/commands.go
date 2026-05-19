@@ -515,7 +515,7 @@ func (c *shellContext) cmdEncryptSecret(ctx context.Context, args []string) erro
 	}
 	ciphertext, ret := c.bot.EncryptSecret(args[0])
 	if ret != robot.Ok {
-		return interp.ExitStatus(uint8(ret))
+		return retValToExitStatus(ret)
 	}
 	_, _ = io.WriteString(interp.HandlerCtx(ctx).Stdout, ciphertext)
 	return nil
@@ -539,13 +539,13 @@ func (c *shellContext) cmdGetUserAttribute(ctx context.Context, args []string) e
 	}
 	attr := c.bot.GetUserAttribute(args[0], args[1])
 	if attr == nil {
-		return interp.ExitStatus(uint8(robot.AttributeNotFound))
+		return retValToExitStatus(robot.AttributeNotFound)
 	}
 	_, _ = io.WriteString(interp.HandlerCtx(ctx).Stdout, attr.Attribute)
 	if attr.RetVal == robot.Ok {
 		return nil
 	}
-	return interp.ExitStatus(uint8(attr.RetVal))
+	return retValToExitStatus(attr.RetVal)
 }
 
 func (c *shellContext) cmdLog(ctx context.Context, args []string) error {
@@ -578,7 +578,7 @@ func (c *shellContext) cmdGetTaskConfig(ctx context.Context, args []string) erro
 			return writeJSON(ctx, sliceCfg)
 		}
 	}
-	return interp.ExitStatus(uint8(ret))
+	return retValToExitStatus(ret)
 }
 
 func (c *shellContext) cmdPromptForReply(ctx context.Context, args []string) error {
@@ -1283,11 +1283,21 @@ func usageError(ctx context.Context, msg string) error {
 	return interp.ExitStatus(2)
 }
 
+func retValToExitStatus(ret robot.RetVal) interp.ExitStatus {
+	if ret < 0 {
+		return interp.ExitStatus(1)
+	}
+	if ret > 255 {
+		return interp.ExitStatus(255)
+	}
+	return interp.ExitStatus(uint8(ret))
+}
+
 func retToError(ret robot.RetVal) error {
 	if ret == robot.Ok {
 		return nil
 	}
-	return interp.ExitStatus(uint8(ret))
+	return retValToExitStatus(ret)
 }
 
 func retCodeError(ret robot.RetVal) error {
@@ -1295,9 +1305,9 @@ func retCodeError(ret robot.RetVal) error {
 		return nil
 	}
 	if ret == robot.RetryPrompt {
-		return interp.ExitStatus(uint8(robot.Interrupted))
+		return retValToExitStatus(robot.Interrupted)
 	}
-	return interp.ExitStatus(uint8(ret))
+	return retValToExitStatus(ret)
 }
 
 func parseTruthy(value string) bool {
