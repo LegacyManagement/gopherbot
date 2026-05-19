@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/lnxjedi/gopherbot/robot"
 )
@@ -19,9 +18,17 @@ type fbConfig struct {
 
 var fb fbConfig
 
+func validateFileBrainKey(k string) error {
+	if !keyRe.MatchString(k) {
+		return fmt.Errorf("invalid memory key %q", k)
+	}
+	return nil
+}
+
 func (fb *fbConfig) Store(k string, b *[]byte) error {
-	k = strings.Replace(k, `/`, ":", -1)
-	k = strings.Replace(k, `\`, ":", -1)
+	if err := validateFileBrainKey(k); err != nil {
+		return err
+	}
 	datumPath := filepath.Join(brainPath, k)
 	if fb.Encode {
 		if err := WriteBase64File(datumPath, b); err != nil {
@@ -36,8 +43,9 @@ func (fb *fbConfig) Store(k string, b *[]byte) error {
 }
 
 func (fb *fbConfig) Retrieve(k string) (*[]byte, bool, error) {
-	k = strings.Replace(k, `/`, ":", -1)
-	k = strings.Replace(k, `\`, ":", -1)
+	if err := validateFileBrainKey(k); err != nil {
+		return nil, false, err
+	}
 	datumPath := filepath.Join(brainPath, k)
 	if _, err := os.Stat(datumPath); err == nil {
 		datum, err := ReadBinaryFile(datumPath)
@@ -65,6 +73,9 @@ func (fb *fbConfig) List() ([]string, error) {
 }
 
 func (fb *fbConfig) Delete(key string) (err error) {
+	if err = validateFileBrainKey(key); err != nil {
+		return err
+	}
 	err = os.Remove(filepath.Join(brainPath, key))
 	return
 }

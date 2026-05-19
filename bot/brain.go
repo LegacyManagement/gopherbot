@@ -262,7 +262,7 @@ func brainQuit() {
 	<-reply
 }
 
-const keyRegex = `[\w:]+` // keys can only be word chars + separator (:)
+const keyRegex = `^[\w:]+$` // keys can only be word chars + separator (:)
 var keyRe = regexp.MustCompile(keyRegex)
 
 // checkout returns the []byte from the brain, with a lock token granting
