@@ -10,8 +10,6 @@ replace github.com/chzyer/readline => ./golib/readline
 
 replace gopherbot.internal/lib => ./lib
 
-// replace github.com/go-git/go-git/v5 => ./replacements/go-git
-
 require (
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/aws/aws-sdk-go-v2 v1.41.1
@@ -26,7 +24,7 @@ require (
 	github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf
 	github.com/duosecurity/duo_api_golang v0.0.0-20250430191550-ac36954387e7
 	github.com/emersion/go-textwrapper v0.0.0-20200911093747-65d896831594
-	github.com/go-git/go-git/v5 v5.19.0
+	github.com/go-git/go-git/v5 v5.19.1
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/jordan-wright/email v4.0.1-0.20210109023952-943e75fe5223+incompatible
