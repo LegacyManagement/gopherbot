@@ -652,13 +652,18 @@ PromptUserForReply(){
 	local REGEX=$1
 	local PUSER=$2
 	shift 2
-	PromptUserChannelThreadForReply "$REGEX" "$PUSER" "" "" "$*"
+	PromptUserChannelThreadForReply $FORMAT "$REGEX" "$PUSER" "" "" "$*"
 }
 
 MessageFormat(){
 	if [ -n "$1" ]
 	then
-		export GB_FORMAT="$1"
+		if [[ $1 = -? ]]
+		then
+			export GB_FORMAT="$(getFormat "$1")"
+		else
+			export GB_FORMAT="$1"
+		fi
 	fi
 }
 
