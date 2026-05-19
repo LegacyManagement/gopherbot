@@ -26,6 +26,16 @@ Forward plan:
   `integration` target.
 - The test harness depends on test-only event emission: `bot/emit_testing.go` is built with `//go:build test`, while `bot/emit_noop.go` is used when the `test` tag is not set.
 
+## Module Path Gotchas (Go Workspaces)
+
+- If `go test` reports `main module ... does not contain package ...`, treat it as a module/workspace invocation issue first, not an immediate product regression.
+- Repository root commands should target packages addressable from the root module/workspace. Examples:
+  - `go test ./bot`
+  - `go test github.com/chzyer/readline`
+- The `lib/` subtree is its own module (`gopherbot.internal/lib`). From the repository root, run library tests with workspace mode disabled so Go uses the local `lib/go.mod` module identity:
+  - `cd lib && GOWORK=off go test ./newrobotflow/...`
+- If you need to test multiple modules in one task, run each command in the module context that owns the package path instead of forcing a single root-level `go test` glob.
+
 ## Harness entrypoints
 
 - `gopherbot-integration run-suite <SuiteName>` is the new process-backed

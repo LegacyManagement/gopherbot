@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"sync"
@@ -22,6 +23,12 @@ const (
 	T_RAW
 	T_ERAW // exit raw
 	T_EOF
+)
+
+const (
+	messageTypeLen    = 2
+	messageHeaderLen  = 4
+	maxMessageDataLen = math.MaxInt32 - messageTypeLen
 )
 
 type RemoteSvr struct {
@@ -259,10 +266,13 @@ func ReadMessage(r io.Reader) (*Message, error) {
 	if err := binary.Read(r, binary.BigEndian, &length); err != nil {
 		return nil, err
 	}
+	if length < messageTypeLen {
+		return nil, fmt.Errorf("invalid message length %d", length)
+	}
 	if err := binary.Read(r, binary.BigEndian, &m.Type); err != nil {
 		return nil, err
 	}
-	m.Data = make([]byte, int(length)-2)
+	m.Data = make([]byte, int(length)-messageTypeLen)
 	if _, err := io.ReadFull(r, m.Data); err != nil {
 		return nil, err
 	}
@@ -274,10 +284,23 @@ func NewMessage(t MsgType, data []byte) *Message {
 }
 
 func (m *Message) WriteTo(w io.Writer) (int, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, len(m.Data)+2+4))
-	binary.Write(buf, binary.BigEndian, int32(len(m.Data)+2))
-	binary.Write(buf, binary.BigEndian, m.Type)
-	buf.Write(m.Data)
+	if len(m.Data) > maxMessageDataLen {
+		return 0, fmt.Errorf("message data too large: %d", len(m.Data))
+	}
+	if len(m.Data) > math.MaxInt-messageTypeLen-messageHeaderLen {
+		return 0, fmt.Errorf("message buffer length overflow: %d", len(m.Data))
+	}
+	frameLen := int32(len(m.Data) + messageTypeLen)
+	buf := bytes.NewBuffer(make([]byte, 0, len(m.Data)+messageTypeLen+messageHeaderLen))
+	if err := binary.Write(buf, binary.BigEndian, frameLen); err != nil {
+		return 0, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, m.Type); err != nil {
+		return 0, err
+	}
+	if _, err := buf.Write(m.Data); err != nil {
+		return 0, err
+	}
 	n, err := buf.WriteTo(w)
 	return int(n), err
 }

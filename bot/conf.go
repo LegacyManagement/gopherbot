@@ -614,7 +614,7 @@ func loadConfig(preConnect bool) error {
 	for i := range newconfig.ChannelRoster {
 		newconfig.ChannelRoster[i].protocol = processed.protocol
 	}
-	perProtocolConfigs := make(map[string]json.RawMessage, len(processed.secondaryProtocols)+1)
+	perProtocolConfigs := make(map[string]json.RawMessage, len(processed.secondaryProtocols))
 	// Load primary protocol config from conf/protocols/<primary>.yaml and then
 	// re-append robot.yaml channels so robot.yaml remains the override layer.
 	robotPrimaryChannels := append([]ChannelInfo(nil), newconfig.ChannelRoster...)

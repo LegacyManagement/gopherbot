@@ -112,8 +112,8 @@ func Initialize(handler robot.Handler, l *log.Logger) robot.InitializedConnector
 		abort = c.Abort
 	}
 	found := false
-	userNameToIndex := make(map[string]int, len(c.Users)+1)
-	userIDToIndex := make(map[string]int, len(c.Users)+1)
+	userNameToIndex := make(map[string]int, len(c.Users))
+	userIDToIndex := make(map[string]int, len(c.Users))
 	for i, u := range c.Users {
 		userNameToIndex[u.Name] = i
 		userIDToIndex[u.InternalID] = i

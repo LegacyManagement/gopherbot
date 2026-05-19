@@ -1371,7 +1371,7 @@ func writeOrUpdateEnvRepository(repositoryURL, deployKey string) error {
 	}
 	lines = stripSetupPlaceholderLines(lines)
 
-	newLines := make([]string, 0, len(lines)+len(required))
+	newLines := make([]string, 0, len(lines))
 	seen := map[string]bool{}
 	for _, line := range lines {
 		key, _, ok := parseEnvLine(line)
@@ -1940,7 +1940,7 @@ func ensureSSHProtocolUserKey(sshConfigPath, user, sshKey string) error {
 
 	inProtocol := false
 	replaced := false
-	out := make([]string, 0, len(lines)+len(userBlock))
+	out := make([]string, 0, len(lines))
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
 		trim := strings.TrimSpace(line)
