@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -196,7 +197,7 @@ func (w *worker) startPipeline(parent *worker, t interface{}, ptype pipelineType
 		}
 	}
 	w.Unlock()
-	w.startPipelineWatchdog()
+	w.startPipelineWatchdog(watchdogPhasePrimary, c.startedAt)
 	if isJob && (!job.Quiet || c.verbose || ptype == jobCommand) {
 		r := w.makeRobot()
 		taskinfo := task.name
@@ -231,6 +232,7 @@ func (w *worker) startPipeline(parent *worker, t interface{}, ptype pipelineType
 
 	var errString string
 	ret, errString = w.runPipeline(primaryTasks, ptype, true)
+	w.stopPipelineWatchdog()
 	c.environment["GOPHER_FINAL_TASK"] = c.taskName
 	finalTask := c.taskName
 	c.environment["GOPHER_FINAL_TYPE"] = c.taskType
@@ -273,6 +275,13 @@ func (w *worker) startPipeline(parent *worker, t interface{}, ptype pipelineType
 	c.logger.Close()
 
 	numFinalTasks := len(w.finalTasks)
+	numCleanupTasks := numFinalTasks
+	if ret != robot.Normal {
+		numCleanupTasks += numFailTasks
+	}
+	if numCleanupTasks > 0 {
+		w.startPipelineWatchdog(watchdogPhaseCleanup, time.Now())
+	}
 	if numFinalTasks > 0 {
 		w.runPipeline(finalTasks, ptype, false)
 	}
@@ -280,6 +289,9 @@ func (w *worker) startPipeline(parent *worker, t interface{}, ptype pipelineType
 		if numFailTasks > 0 {
 			w.runPipeline(failTasks, ptype, false)
 		}
+	}
+	if numCleanupTasks > 0 {
+		w.stopPipelineWatchdog()
 	}
 	if ret != robot.Normal {
 		w.emitPipelineFailureAlert(ret, errString)
@@ -508,16 +520,46 @@ func (w *worker) runPipeline(stage pipeStage, ptype pipelineType, initialRun boo
 				runQueues.Lock()
 				queue, exists := runQueues.m[tag]
 				if exists {
-					wakeUp := make(chan struct{})
+					wakeUp := make(chan struct{}, 1)
 					queue = append(queue, wakeUp)
 					runQueues.m[tag] = queue
+					waitCtx, waitCancel := context.WithCancel(context.Background())
+					w.Lock()
+					w.exclusiveWaitTag = tag
+					w.exclusiveWaitCh = wakeUp
+					w.exclusiveWaitCancel = waitCancel
+					w.exclusiveWaitAbort = false
+					w.Unlock()
 					runQueues.Unlock()
 					Log(robot.Debug, "Exclusive task in progress, queueing bot #%d and waiting; queue length: %d", w.id, len(queue))
 					if (isJob && !job.Quiet) || ptype == jobCommand {
 						w.makeRobot().Say("Queueing task '%s' in pipeline '%s'", task.name, w.pipeName)
 					}
-					// Now we block until kissed by a Handsome Prince
-					<-wakeUp
+					// Now we block until the current exclusive holder finishes,
+					// or until timeout/admin interruption cancels the wait.
+					select {
+					case <-wakeUp:
+					case <-waitCtx.Done():
+					}
+					w.Lock()
+					waitAborted := w.exclusiveWaitAbort
+					if w.exclusiveWaitCh == wakeUp {
+						w.exclusiveWaitTag = ""
+						w.exclusiveWaitCh = nil
+						w.exclusiveWaitCancel = nil
+						w.exclusiveWaitAbort = false
+					}
+					w.Unlock()
+					waitCancel()
+					if waitAborted {
+						removeExclusiveWaiter(tag, wakeUp)
+						w.Lock()
+						w.exclusive = false
+						w.Unlock()
+						ret = robot.PipelineAborted
+						errString = "Pipeline aborted, exclusive wait canceled"
+						break
+					}
 					Log(robot.Debug, "Bot #%d in queue waking up and re-starting task '%s'", w.id, task.name)
 					if (job != nil && !job.Quiet) || ptype == jobCommand {
 						w.makeRobot().Say("Re-starting queued task '%s' in pipeline '%s'", task.name, w.pipeName)

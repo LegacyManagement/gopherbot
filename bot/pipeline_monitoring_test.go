@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
@@ -227,16 +228,127 @@ func TestEmitPipelineTimeOutKillSendsManualInterventionAlertForInProcessWork(t *
 		},
 	}
 
-	w.emitPipelineTimeOutKill()
+	w.watchdogGeneration = 1
+	w.watchdogPhase = watchdogPhasePrimary
+	w.emitPipelineTimeOutKill(watchdogPhasePrimary, 1)
 
 	if !w.timeOutKillSent {
 		t.Fatalf("expected kill-threshold marker to be recorded")
+	}
+	if !w.primaryKillSent {
+		t.Fatalf("expected primary kill-threshold marker to be recorded")
 	}
 	if !w.timeOutKillManual {
 		t.Fatalf("expected manual intervention flag for in-process work")
 	}
 	if !strings.Contains(fake.lastMessage, "manual intervention is required") {
 		t.Fatalf("manual intervention alert missing guidance: %q", fake.lastMessage)
+	}
+}
+
+func TestCleanupTimeoutCanFireAfterPrimaryTimeout(t *testing.T) {
+	fake := installFormatCaptureConnector(t)
+
+	w := &worker{
+		Channel:  "general",
+		Protocol: robot.Test,
+		Incoming: &robot.ConnectorMessage{Protocol: "test", ChannelName: "general"},
+		cfg:      &configuration{defaultMessageFormat: robot.Raw},
+		pipeContext: &pipeContext{
+			active:          true,
+			pipeName:        "cleanup-watchdog",
+			taskName:        "cleanup-task",
+			taskType:        "task",
+			taskClass:       "Go",
+			startedAt:       time.Now().Add(-time.Minute),
+			timeZone:        time.UTC,
+			operatorChannel: "general",
+			liveLogger:      newPipelineLiveLogger(&recordingHistoryLogger{}),
+			primaryKillSent: true,
+			timeOutKillSent: true,
+		},
+	}
+	w.watchdogGeneration = 3
+	w.watchdogPhase = watchdogPhaseCleanup
+
+	w.emitPipelineTimeOutKill(watchdogPhaseCleanup, 3)
+
+	if !w.cleanupKillSent {
+		t.Fatalf("expected cleanup kill-threshold marker to be recorded")
+	}
+	if !strings.Contains(fake.lastMessage, "Pipeline cleanup timeout kill threshold reached") {
+		t.Fatalf("cleanup timeout alert missing cleanup title: %q", fake.lastMessage)
+	}
+}
+
+func TestTimeoutCancelsQueuedExclusiveWaiter(t *testing.T) {
+	resetRunQueuesForTest(t)
+
+	wakeUp := make(chan struct{}, 1)
+	waitCtx, waitCancel := context.WithCancel(context.Background())
+	defer waitCancel()
+	tag := "job-ns:configrepo"
+	runQueues.Lock()
+	runQueues.m[tag] = []chan struct{}{wakeUp}
+	runQueues.Unlock()
+
+	w := &worker{
+		pipeContext: &pipeContext{
+			active:              true,
+			watchdogGeneration:  9,
+			watchdogPhase:       watchdogPhasePrimary,
+			exclusiveWaitTag:    tag,
+			exclusiveWaitCh:     wakeUp,
+			exclusiveWaitCancel: waitCancel,
+		},
+	}
+
+	result := interruptPipelineForTimeOut(w, watchdogPhasePrimary, 9)
+	if !result.queued {
+		t.Fatalf("interruptPipelineForTimeOut queued = false, want true")
+	}
+	select {
+	case <-waitCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("queued Exclusive waiter was not canceled")
+	}
+	if !w.exclusiveWaitAbort {
+		t.Fatal("queued Exclusive waiter was not marked aborted")
+	}
+	runQueues.Lock()
+	queueLen := len(runQueues.m[tag])
+	runQueues.Unlock()
+	if queueLen != 0 {
+		t.Fatalf("exclusive queue length = %d, want 0", queueLen)
+	}
+}
+
+func TestStaleTimeoutGenerationDoesNotInterruptCurrentPhase(t *testing.T) {
+	waitCtx, waitCancel := context.WithCancel(context.Background())
+	defer waitCancel()
+
+	w := &worker{
+		pipeContext: &pipeContext{
+			active:              true,
+			watchdogGeneration:  4,
+			watchdogPhase:       watchdogPhaseCleanup,
+			exclusiveWaitTag:    "job-ns:configrepo",
+			exclusiveWaitCh:     make(chan struct{}, 1),
+			exclusiveWaitCancel: waitCancel,
+		},
+	}
+
+	result := interruptPipelineForTimeOut(w, watchdogPhasePrimary, 3)
+	if !result.stale {
+		t.Fatalf("interruptPipelineForTimeOut stale = false, want true")
+	}
+	select {
+	case <-waitCtx.Done():
+		t.Fatal("stale primary timeout canceled current cleanup wait")
+	default:
+	}
+	if w.exclusiveWaitAbort {
+		t.Fatal("stale primary timeout marked current cleanup wait aborted")
 	}
 }
 

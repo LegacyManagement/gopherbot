@@ -110,6 +110,11 @@ Platform mechanics differ:
   - effective warn/kill timeout profile
   - operator-channel routing target
   - a bounded live log ring buffer for recent pipeline output
+- Timeout monitoring is phase-aware:
+  - the primary watchdog uses the effective pipeline `Warn` / `Kill` thresholds from pipeline start
+  - after the primary stage returns, final/fail cleanup receives a fresh watchdog window using the same effective thresholds
+  - no separate cleanup timeout configuration exists
+  - watchdog callbacks are generation-checked so stale primary timers cannot interrupt cleanup work after the primary stage has completed
 - The live buffer is engine-owned and exists independently of persisted history retention.
   - It captures section markers, engine log lines (`Robot.Log(...)` / `worker.Log(...)`), and child stdout/stderr.
 - Admin/operator inspection surface:
@@ -121,6 +126,7 @@ Platform mechanics differ:
 - Timeout watchdog kill scope is intentionally narrower than alert scope:
   - external executable child pipelines can be killed by process group
   - RPC-backed interpreter/child-Go pipelines can be canceled and/or killed through parent-held child state
+  - queued `Exclusive` waiters can be canceled and removed from the wait queue so they do not later wake and execute after timeout
   - compiled-in Go plugins/jobs/tasks are not force-killed in v2.9; the engine emits a manual-intervention alert instead
 - Practical implication: timeout monitoring is broad, but hard termination only applies where the parent process actually owns a killable child boundary.
 

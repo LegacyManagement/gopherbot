@@ -155,13 +155,18 @@ For a full execution/security walkthrough, see `aidocs/EXECUTION_SECURITY_MODEL.
   - explicit task-level value overrides the type default
   - explicit `0` disables that threshold for the task
   - when both thresholds are non-zero, `Kill` must be greater than `Warn`
-- A watchdog goroutine is started for active pipelines with any effective timeout: `bot/pipeline_monitoring.go`.
+- Watchdog goroutines are started for active pipelines with any effective timeout: `bot/pipeline_monitoring.go`.
+  - The primary watchdog starts at pipeline start and is stopped when the primary task stage returns.
+  - Cleanup receives a fresh watchdog window using the same effective `Warn` / `Kill` thresholds before `FinalTask` / `FailTask` execution. No separate cleanup timeout config exists.
+  - Watchdogs carry a phase/generation token so a stale primary timer cannot interrupt a cleanup task that started after the primary stage completed.
   - Warn threshold posts an operator-facing alert with WID, pipeline/task, start time, age, and a recent live-log excerpt.
   - Plugin alerts go to `DefaultJobChannel`; job alerts go to the job's configured channel.
   - Kill threshold appends a timeout marker to the live/history log and then:
     - cancels RPC-backed child work when available
     - kills external process groups for executable child work
+    - cancels queued `Exclusive` waiters before they can later wake and run
     - emits a manual-intervention alert instead of force-killing compiled-in Go work
+  - Cleanup-stage timeout alerts are labelled `Pipeline cleanup ...` so operators can distinguish primary work from final/fail cleanup.
 - Admin inspection commands for active pipelines:
   - `ps` is available only in direct/hidden message contexts because task arguments can contain sensitive operator data.
   - `ps` defaults to sectioned `Plugins` / `Jobs` output with worker ID (`WID`), compact `AGE`, `USER`, pipeline name, current task, command/source, args, and an explicit hint for `ps -v`.
@@ -191,6 +196,7 @@ For a full execution/security walkthrough, see `aidocs/EXECUTION_SECURITY_MODEL.
 - `FinalTask` ordering is LIFO/FILO by design (cleanup stack behavior): `bot/robot_pipecmd.go`, `pipeTask` (`flavorFinal` prepends to `w.finalTasks`).
 - `FailTask` ordering is append/in-order (FIFO): `bot/robot_pipecmd.go`, `pipeTask` (`flavorFail` appends to `w.failTasks`).
 - Operational pattern: pair acquisition/setup in `AddTask` with cleanup in `FinalTask` (for example, `ssh-agent deploy` auto-registers `FinalTask("ssh-agent", "stop")` and `ssh-git-helper` host-key setup auto-registers `FinalTask("ssh-git-helper", "delete")`).
+- Timeout behavior for cleanup: a primary-stage timeout that interrupts killable work still unwinds into `FinalTask` / `FailTask` execution, and cleanup gets a fresh timeout window using the same effective thresholds. If cleanup itself times out, the engine interrupts the current cleanup child where possible, alerts with a cleanup-specific timeout title, and then continues normal pipeline teardown such as `Exclusive` release.
 - `AddCommand` composes plugin work into the current pipeline; it does not inject a transport/user-originated inbound message.
 - `AddCommand` only succeeds when:
   - it runs during the primary task stage (`primaryTasks`)

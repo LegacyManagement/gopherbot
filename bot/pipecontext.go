@@ -169,8 +169,16 @@ type pipeContext struct {
 	timeOutWarnSent     bool
 	timeOutKillSent     bool
 	timeOutKillManual   bool
+	primaryWarnSent     bool
+	primaryKillSent     bool
+	primaryKillManual   bool
+	cleanupWarnSent     bool
+	cleanupKillSent     bool
+	cleanupKillManual   bool
 	executedPrimaryTask bool
 	watchdogCancel      context.CancelFunc
+	watchdogGeneration  uint64
+	watchdogPhase       pipelineWatchdogPhase
 	ptype               pipelineType // what started this pipeline
 	elevated            bool         // set when required elevation succeeds
 	stage               pipeStage    // which pipeline is being run; primaryP, finalP, failP
@@ -182,6 +190,10 @@ type pipeContext struct {
 	pipeName, pipeDesc  string       // name and description of task that started pipeline
 	currentTask         interface{}  // pointer to currently executing task
 	exclusive           bool         // indicates task was running exclusively
+	exclusiveWaitTag    string
+	exclusiveWaitCh     chan struct{}
+	exclusiveWaitCancel context.CancelFunc
+	exclusiveWaitAbort  bool
 }
 
 func (c *pipeContext) section(name, info string) {
