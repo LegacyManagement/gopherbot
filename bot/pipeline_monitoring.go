@@ -11,7 +11,6 @@ import (
 
 	"github.com/lnxjedi/gopherbot/robot"
 	"github.com/lnxjedi/gopherbot/v2/modules/linebuffer"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -291,10 +290,7 @@ func interruptPipelineForTimeOut(worker *worker, phase pipelineWatchdogPhase, ge
 	if pid == 0 {
 		return timeoutInterruptResult{manual: true}
 	}
-	if err := unix.Kill(-pid, unix.SIGKILL); err != nil && err != unix.ESRCH {
-		return timeoutInterruptResult{pid: pid, err: err}
-	}
-	return timeoutInterruptResult{killed: true, pid: pid}
+	return worker.requestSerializedExternalKill()
 }
 
 func (w *worker) beginPipelineTimeOutWarn(phase pipelineWatchdogPhase, generation uint64) (*pipelineLiveLogger, bool) {

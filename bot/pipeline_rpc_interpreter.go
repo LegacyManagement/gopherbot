@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lnxjedi/gopherbot/robot"
@@ -400,14 +401,26 @@ func waitPipelineRPCResponse(dec *json.Decoder, enc *json.Encoder, targetID stri
 				_ = writePipelineRPCError(enc, msg.ID, "invalid_state", "robot is not available for this rpc request")
 				continue
 			}
+			apiWorker := workerForRobotAPI(r)
+			if apiWorker == nil {
+				_ = writePipelineRPCError(enc, msg.ID, "invalid_state", "robot worker is not active")
+				continue
+			}
+			if !apiWorker.beginSerializedExternalAPICall() {
+				_ = writePipelineRPCError(enc, msg.ID, "interrupted", "external process kill is pending")
+				continue
+			}
 			res, handleErr := handlePipelineRPCRobotCall(msg.Params, r)
 			if handleErr != nil {
 				_ = writePipelineRPCError(enc, msg.ID, "robot_call_failed", handleErr.Error())
+				apiWorker.finishSerializedExternalAPICall()
 				continue
 			}
 			if err := writePipelineRPCResponse(enc, msg.ID, res); err != nil {
+				apiWorker.finishSerializedExternalAPICall()
 				return nil, newPipelineRPCError("protocol_error", method, "writing rpc response", err)
 			}
+			apiWorker.finishSerializedExternalAPICall()
 		default:
 			// Ignore unexpected message types.
 		}
@@ -1125,11 +1138,12 @@ func applyPipelineRPCRobotOptions(base robot.Robot, opts pipelineRPCRobotOptions
 }
 
 type pipelineRPCInterpreterRobotClient struct {
-	dec  *json.Decoder
-	enc  *json.Encoder
-	seq  int
-	bot  map[string]string
-	opts pipelineRPCRobotOptions
+	dec    *json.Decoder
+	enc    *json.Encoder
+	callMu *sync.Mutex
+	seq    int
+	bot    map[string]string
+	opts   pipelineRPCRobotOptions
 }
 
 func newPipelineRPCInterpreterRobotClient(dec *json.Decoder, enc *json.Encoder, bot map[string]string) *pipelineRPCInterpreterRobotClient {
@@ -1137,7 +1151,7 @@ func newPipelineRPCInterpreterRobotClient(dec *json.Decoder, enc *json.Encoder, 
 	for k, v := range bot {
 		cpy[k] = v
 	}
-	return &pipelineRPCInterpreterRobotClient{dec: dec, enc: enc, bot: cpy}
+	return &pipelineRPCInterpreterRobotClient{dec: dec, enc: enc, callMu: &sync.Mutex{}, bot: cpy}
 }
 
 func (c *pipelineRPCInterpreterRobotClient) clone() *pipelineRPCInterpreterRobotClient {
@@ -1150,6 +1164,9 @@ func (c *pipelineRPCInterpreterRobotClient) clone() *pipelineRPCInterpreterRobot
 }
 
 func (c *pipelineRPCInterpreterRobotClient) call(method string, args ...interface{}) (map[string]interface{}, error) {
+	c.callMu.Lock()
+	defer c.callMu.Unlock()
+
 	c.seq++
 	id := fmt.Sprintf("robot-%d", c.seq)
 	params := pipelineRPCRobotCallRequest{Method: method, Options: c.opts, Args: args}

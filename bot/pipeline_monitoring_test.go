@@ -85,6 +85,55 @@ func TestPipelineLiveLoggerKeepsLiveBufferAfterBaseClose(t *testing.T) {
 	}
 }
 
+func TestSerializedExternalKillWaitsForActiveAPICall(t *testing.T) {
+	w := &worker{}
+	if !w.beginSerializedExternalAPICall() {
+		t.Fatal("beginSerializedExternalAPICall rejected call without pending kill")
+	}
+
+	done := make(chan timeoutInterruptResult, 1)
+	go func() {
+		done <- w.requestSerializedExternalKill()
+	}()
+
+	select {
+	case result := <-done:
+		t.Fatalf("serialized kill completed while API call was active: %+v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	w.finishSerializedExternalAPICall()
+
+	select {
+	case result := <-done:
+		if !result.manual {
+			t.Fatalf("serialized kill result = %+v, want manual with no process", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serialized kill did not complete after API call finished")
+	}
+}
+
+func TestSerializedExternalAPICallRejectsPendingKill(t *testing.T) {
+	w := &worker{}
+	w.Lock()
+	w.externalKillPending = true
+	w.Unlock()
+
+	if w.beginSerializedExternalAPICall() {
+		w.finishSerializedExternalAPICall()
+		t.Fatal("beginSerializedExternalAPICall allowed call while kill was pending")
+	}
+
+	w.Lock()
+	ready := w.externalKillResultReady
+	result := w.externalKillResult
+	w.Unlock()
+	if !ready || !result.manual {
+		t.Fatalf("pending kill result = ready:%t result:%+v, want ready manual", ready, result)
+	}
+}
+
 func TestFormatPipelineAgeUsesCompactOperatorUnits(t *testing.T) {
 	tests := []struct {
 		name string

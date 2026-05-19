@@ -98,13 +98,28 @@ Platform mechanics differ:
   - For `.gsh`, shell utilities such as `ls`, `grep`, `jq`, `mktemp`, and `tar` stay inside the child process; only Robot operations cross back to the parent engine over RPC.
   - Parent tracks active RPC child process in `worker.osCmd` and request-cancel hook in `worker.rpcCancel`.
   - RPC request lifecycle now uses bounded handshake/request/shutdown/child-exit waits with explicit error classes.
+  - Robot API calls from RPC-backed children are serialized per worker by the
+    engine-side `serializeAPICalls` gate. If timeout/admin kill is requested
+    while an API call is in progress, the engine lets the API response finish,
+    then kills the child process group before allowing another external API
+    call to start.
 - External executable tasks:
   - parent starts an internal child runner process (`gopherbot pipeline-child-exec`) with separate process group (`Setpgid: true`).
   - The child commits to the parent-selected privsep role before execing the target script/interpreter.
   - child runner executes exactly one external command, streams stdout/stderr, exits with command status.
   - parent tracks child pid in `worker.osCmd` for admin `ps`/`kill` and timeout watchdog kill handling.
+  - Legacy HTTP/JSON Robot API calls from external executables are serialized
+    through the same per-worker `serializeAPICalls` gate used by RPC-backed
+    children.
 
 `getDefCfgThread` (plugin configure/default-config path) routes file-backed configure calls through the same child process boundary.
+
+Compiled-in Go extensions run inside the parent engine and do not cross the
+external HTTP/RPC API gate. Because compiled-in extensions are trusted engine
+code, authors must avoid parallel Robot API calls from their own goroutines
+unless the method-specific locking behavior has been reviewed. In practice this
+is a code-review requirement for shipped compiled-in extensions, which are
+maintained with the engine.
 
 ## Operator Observability And Kill Scope
 
@@ -129,6 +144,11 @@ Platform mechanics differ:
 - Timeout watchdog kill scope is intentionally narrower than alert scope:
   - external executable child pipelines can be killed by process group
   - RPC-backed interpreter/child-Go pipelines can be canceled and/or killed through parent-held child state
+  - external HTTP/RPC Robot API calls are serialized per worker, so timeout/admin
+    kill waits for an in-flight external API call to finish writing its response
+    before killing the child process group; if no API call is active, kill takes
+    the serialization gate first so a new external API call cannot begin during
+    termination
   - queued `Exclusive` waiters can be canceled and removed from the wait queue so they do not later wake and execute after timeout
   - compiled-in Go plugins/jobs/tasks are not force-killed in v2.9; the engine emits a manual-intervention alert instead
 - Practical implication: timeout monitoring is broad, but hard termination only applies where the parent process actually owns a killable child boundary.

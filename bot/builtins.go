@@ -14,7 +14,6 @@ import (
 
 	"github.com/lnxjedi/gopherbot/robot"
 	"github.com/lnxjedi/gopherbot/robot/util"
-	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v3"
 )
 
@@ -2229,11 +2228,16 @@ func admin(m robot.Robot, command string, args ...string) (retval robot.TaskRetV
 			r.Say("No active process found for pipeline")
 			return
 		}
-		if err := unix.Kill(-pid, unix.SIGKILL); err != nil {
-			r.Say("Unable to kill pid %d: %v", pid, err)
+		result := worker.requestSerializedExternalKill()
+		if result.err != nil {
+			r.Say("Unable to kill pid %d: %v", pid, result.err)
 			return
 		}
-		r.Say("Killed pid %d", pid)
+		if result.manual {
+			r.Say("No active process found for pipeline")
+			return
+		}
+		r.Say("Killed pid %d", result.pid)
 	case "pause":
 		if len(args) == 0 {
 			r.Say("Usage: pause <job>")

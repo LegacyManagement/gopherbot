@@ -310,6 +310,19 @@ func (h handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	task, _, _ := getTask(r.currentTask)
 	Log(robot.Trace, "Task '%s' calling function '%s' in channel '%s' for user '%s'", task.name, f.FuncName, r.Channel, r.User)
 
+	apiWorker := workerForRobotAPI(r)
+	if apiWorker == nil {
+		rw.WriteHeader(http.StatusBadRequest)
+		Log(robot.Error, "HTTP request called for inactive Robot API worker")
+		return
+	}
+	if !apiWorker.beginSerializedExternalAPICall() {
+		rw.WriteHeader(http.StatusConflict)
+		Log(robot.Warn, "HTTP Robot API call '%s' rejected because external process kill is pending", f.FuncName)
+		return
+	}
+	defer apiWorker.finishSerializedExternalAPICall()
+
 	var (
 		attr  *robot.AttrRet
 		reply string

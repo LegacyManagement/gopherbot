@@ -200,27 +200,31 @@ func (h handler) ReadEncryptedFile(path string) ([]byte, error) {
 // up creating a new pipeline. Workers are also created by scheduled jobs
 // and Spawned jobs, in which case a pipeline is always created.
 type worker struct {
-	User            string                  // The user who sent the message; this can be modified for replying to an arbitrary user
-	Channel         string                  // The channel where the message was received, or "" for a direct message. This can be modified to send a message to an arbitrary channel.
-	ProtocolUser    string                  // The username or <userid> to be sent in connector methods
-	ProtocolChannel string                  // the channel name or <channelid> where the message originated
-	Protocol        robot.Protocol          // slack, terminal, test, others; used for interpreting rawmsg or sending messages with Format = 'Raw'
-	Incoming        *robot.ConnectorMessage // raw struct of message sent by connector
-	Format          robot.MessageFormat     // robot's default message format
-	id              int                     // integer worker ID used when being registered as an active pipeline
-	tasks           *taskList               // Pointers to current task configuration at start of pipeline
-	maps            *userChanMaps           // Pointer to current user / channel maps struct
-	cfg             *configuration          // Active configuration when this context was created
-	BotUser         bool                    // set for bots/programs that should never match ambient messages
-	listedUser      bool                    // set for users listed in global UserRoster
-	isCommand       bool                    // Was the message directed at the robot, dm or by mention
-	cmdMode         string                  // one of "alias", "name", "direct" - for disambiguation; hidden catchalls use Incoming.HiddenMessage
-	msg, fmsg       string                  // the message text sent; without robot name/alias, and with for message matching
-	automaticTask   bool                    // set for scheduled & triggers jobs, where user security restrictions don't apply
-	queueProvider   string                  // queue provider that started a queued job
-	queueMessageID  string                  // provider-local queue message ID for a queued job
-	*pipeContext                            // pointer to the pipeline context
-	sync.Mutex                              // Lock to protect the bot context when pipeline running
+	User                    string                  // The user who sent the message; this can be modified for replying to an arbitrary user
+	Channel                 string                  // The channel where the message was received, or "" for a direct message. This can be modified to send a message to an arbitrary channel.
+	ProtocolUser            string                  // The username or <userid> to be sent in connector methods
+	ProtocolChannel         string                  // the channel name or <channelid> where the message originated
+	Protocol                robot.Protocol          // slack, terminal, test, others; used for interpreting rawmsg or sending messages with Format = 'Raw'
+	Incoming                *robot.ConnectorMessage // raw struct of message sent by connector
+	Format                  robot.MessageFormat     // robot's default message format
+	id                      int                     // integer worker ID used when being registered as an active pipeline
+	tasks                   *taskList               // Pointers to current task configuration at start of pipeline
+	maps                    *userChanMaps           // Pointer to current user / channel maps struct
+	cfg                     *configuration          // Active configuration when this context was created
+	BotUser                 bool                    // set for bots/programs that should never match ambient messages
+	listedUser              bool                    // set for users listed in global UserRoster
+	isCommand               bool                    // Was the message directed at the robot, dm or by mention
+	cmdMode                 string                  // one of "alias", "name", "direct" - for disambiguation; hidden catchalls use Incoming.HiddenMessage
+	msg, fmsg               string                  // the message text sent; without robot name/alias, and with for message matching
+	automaticTask           bool                    // set for scheduled & triggers jobs, where user security restrictions don't apply
+	queueProvider           string                  // queue provider that started a queued job
+	queueMessageID          string                  // provider-local queue message ID for a queued job
+	*pipeContext                                    // pointer to the pipeline context
+	serializeAPICalls       sync.Mutex              // serializes external HTTP/RPC Robot API calls for this worker
+	externalKillPending     bool                    // timeout/admin kill is waiting for serialized external API calls to drain
+	externalKillResult      timeoutInterruptResult
+	externalKillResultReady bool
+	sync.Mutex              // Lock to protect the bot context when pipeline running
 }
 
 func resolveIncomingUser(maps *userChanMaps, protocol, userID, connectorUser string) (userName string, botUser bool, protocolMapped bool, directoryListed bool) {
