@@ -101,6 +101,16 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
   This affects long-running AI thread continuity after inactivity when using subscription-based routing.
   Candidate direction:
   add a config value in `robot.yaml` for thread subscription TTL (and possibly a separate TTL for ephemeral thread memories), defaulting to current behavior.
+- [ ] LOW PRIORITY STRETCH: Add expiring persisted source-IP allow-list support
+  to the WireGuard/VPN plugin.
+  Current Floyd-local behavior keeps `ALLOW_VPN` as a host-local iptables chain
+  and intentionally does not persist allowed home/source IP addresses in plugin
+  memory, to avoid accumulating stale residential IPs. A future distribution
+  version could store allowed source IPs with an expiration timestamp in the
+  plugin datum, add a scheduled cleanup command/job that removes expired entries
+  from both memory and the `ALLOW_VPN` chain, and reconcile the live chain from
+  memory after WireGuard restarts. Keep `clear-vpn` as the explicit full reset
+  path.
 - [x] User validation
   - Added `ValidatedUser` to `ConnectorMessage`; connectors now explicitly mark whether an inbound canonical username is vouched for.
   - Updated engine handling of `IgnoreUnlistedUsers` so validated canonical identity is required for directory-gated inbound policy.
