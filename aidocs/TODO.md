@@ -4,6 +4,27 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
 
 ## Open TODOs
 
+- [ ] HIGH PRIORITY: Research Lua/JS interpreter parity for command context
+  environment variables used by legacy external scripts.
+  Floyd WireGuard Lua spike on May 20, 2026 found that a privileged built-in Lua
+  plugin has `bot.user` populated correctly, but `os.getenv("GOPHER_USER")` and
+  `os.getenv("GOPHER_HIDDEN_COMMAND")` are nil when invoked through the SSH
+  connector/MCP hidden-message path. The legacy Python WireGuard plugin depends
+  on both values (`GOPHER_USER` for canonical username and
+  `GOPHER_HIDDEN_COMMAND` to enforce hidden/private commands). For the Lua
+  rewrite, username can use `bot.user` and privacy can be enforced by plugin
+  config (`RequiredPrivateCommands`), but this is still a compatibility gap for
+  interpreter-backed extensions compared with external HTTP-backed scripts.
+  Follow-up:
+  - determine whether built-in Lua/JS children should expose legacy
+    `GOPHER_*` context values through `os.getenv`, explicit robot fields, or
+    documented replacement APIs
+  - compare Lua, JS, Gopherbot shell, Yaegi Go, and external Python/Ruby/Bash
+    context exposure
+  - preserve connector authority over `Incoming.HiddenMessage` and
+    `Incoming.DirectMessage`; do not let plugins mutate privacy context
+  - update `aidocs/EXTENSION_API.md`, `aidocs/INTERPRETERS.md`, and relevant
+    integration coverage if behavior changes
 - [ ] Add "Purpose" descriptive section to integration tests that spell
   out in plain language what the specific suite is meant to test, to help
   disambiguate test failures. Add per-test "Description" that describes
