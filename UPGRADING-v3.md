@@ -50,6 +50,59 @@ For non-critical pilot robots before tagging 2.9.0:
 During the 2.9.0 pilot window, prefer bugfixes and UX fixes only. Avoid new
 configuration-breaking changes unless a pilot uncovers a critical defect.
 
+## 2026-05-20 Built-In Interpreter Context and Parameter Access
+
+New-style built-in interpreter extensions (Lua, JS, Gopherbot Shell, Yaegi Go)
+use `GetParameter` as the single API for all per-call context values and
+configured pipeline parameters. `os.getenv("GOPHER_*")` does not work in Lua
+or JS — this is a deliberate design choice, not a limitation.
+
+### Legacy external scripts (bash, Python, Ruby)
+
+External scripts receive all `GOPHER_*` context values as OS environment
+variables. Configured pipeline parameters (from `ParameterSets`, namespace, or
+`SetParameter`) are also present as environment variables unless
+`SecureParameters: true` is set in `conf/robot.yaml`.
+
+With `SecureParameters: true`:
+- `GOPHER_*` context variables remain in the environment
+- Configured parameters are withheld from the environment
+- Scripts must call the Gopherbot HTTP JSON API (GetParameter) to retrieve individual
+  parameters
+
+### Built-in interpreter extensions
+
+| Runtime | Context values | Configured parameters |
+|---|---|---|
+| Lua | `bot:GetParameter("GOPHER_USER")` etc. | `bot:GetParameter("PARAM_NAME")` |
+| JS | `bot.GetParameter("GOPHER_USER")` etc. | `bot.GetParameter("PARAM_NAME")` |
+| GSH | `$GOPHER_USER` (env) or `GetParameter GOPHER_USER` | `GetParameter PARAM_NAME`¹ |
+| Yaegi Go | `r.GetParameter("GOPHER_USER")` etc. | `r.GetParameter("PARAM_NAME")` |
+
+¹ GSH follows `SecureParameters` for configured parameters: they are present
+as shell env vars by default, but `GetParameter PARAM_NAME` must be used when
+`SecureParameters: true`.
+
+For Lua and JS, convenience fields on the bot object (`GBOT.user`,
+`GBOT.channel`, `bot.user`, `bot.channel`, etc.) are pre-loaded from the call
+context and remain idiomatic for the most common values. Less-common context
+values — including `GOPHER_PRIVATE_COMMAND`, `GOPHER_CMDMODE`,
+`GOPHER_INSTALLDIR`, `GOPHER_CONFIGDIR`, and `GOPHER_HOME` — are available via
+`GetParameter`. `GOPHER_PRIVATE_COMMAND` returns `"true"` when the command was
+addressed privately (DM or hidden-command context), empty string otherwise.
+
+The `SecureParameters` setting has no effect on Lua, JS, or Yaegi Go: these
+runtimes never receive parameters as environment variables regardless of that
+setting.
+
+Migration note for script rewrites:
+- `os.getenv("GOPHER_USER")` → `bot:GetParameter("GOPHER_USER")` in Lua,
+  `r.GetParameter("GOPHER_USER")` in Yaegi Go
+- `os.getenv("GOPHER_HIDDEN_COMMAND")` has no equivalent for new-style plugins;
+  use `RequiredPrivateCommands` / `RequireAllCommandsPrivate` in plugin config
+  to enforce privacy, or check `bot:GetParameter("GOPHER_PRIVATE_COMMAND")`
+  at runtime
+
 ## 2026-05-06 Environment-Scoped Secrets And Variables
 
 Inline config-template decryption was removed for v3.

@@ -1,0 +1,1 @@
+This directory is for compiled-in Go plugins. Dynamically loaded Go plugins (via Yaegi) are under plugins/.

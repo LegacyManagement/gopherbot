@@ -4,7 +4,7 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
 
 ## Open TODOs
 
-- [ ] HIGH PRIORITY: Research Lua/JS interpreter parity for command context
+- [x] HIGH PRIORITY: Research Lua/JS interpreter parity for command context
   environment variables used by legacy external scripts.
   Floyd WireGuard Lua spike on May 20, 2026 found that a privileged built-in Lua
   plugin has `bot.user` populated correctly, but `os.getenv("GOPHER_USER")` and
@@ -25,6 +25,11 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
     `Incoming.DirectMessage`; do not let plugins mutate privacy context
   - update `aidocs/EXTENSION_API.md`, `aidocs/INTERPRETERS.md`, and relevant
     integration coverage if behavior changes
+  Resolution (2026-05-20): `os.getenv` is deliberately non-functional in
+  built-in interpreter runtimes — all `GOPHER_*` context values and pipeline
+  parameters are served through `GetParameter` via RPC back to the parent engine.
+  GSH gets `$GOPHER_*` natively as shell env. No code changes needed; the gap
+  is a documentation and migration guidance issue. Documented in `UPGRADING-v3.md`.
 - [ ] Add "Purpose" descriptive section to integration tests that spell
   out in plain language what the specific suite is meant to test, to help
   disambiguate test failures. Add per-test "Description" that describes
