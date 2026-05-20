@@ -117,12 +117,6 @@ variable "robot_env_secret_name" {
   type        = string
 }
 
-variable "wireguard_private_key_secret_name" {
-  description = "Optional secret name containing WireGuard private key"
-  type        = string
-  default     = ""
-}
-
 variable "systemd_timeout_stop_sec" {
   description = "systemd TimeoutStopSec for the robot service"
   type        = number
