@@ -101,6 +101,25 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
   This affects long-running AI thread continuity after inactivity when using subscription-based routing.
   Candidate direction:
   add a config value in `robot.yaml` for thread subscription TTL (and possibly a separate TTL for ephemeral thread memories), defaulting to current behavior.
+- [ ] Rainy day: harden brain instance lock cleanup on shutdown and fatal exits.
+  The brain instance lock exists mainly to prevent a developer/operator from
+  accidentally starting two robot instances against the same persistent brain.
+  Today steady-state SIGTERM enters `stop()`, waits for running pipelines, then
+  releases `bot:instance-lock` before `brainQuit()`. This is conservative but
+  can leave a stale lock when service managers send SIGTERM, wait, then SIGKILL
+  during a slow or stuck shutdown, and it does not help fatal/panic exits.
+  Future design questions:
+  - consider marking the lock `shutting_down` on SIGTERM, or releasing it early
+    only for process-signal shutdown, while explicitly accepting or avoiding the
+    old/new overlap risk during pipeline drain
+  - decide whether startup should allow operator-guided takeover of stale
+    `shutting_down` locks after a grace window
+  - route post-lock fatal startup/runtime failures through controlled cleanup
+    where feasible, since `logger.Fatal` / `os.Exit` do not run defers
+  - add top-level panic recovery only at well-defined goroutine roots if cleanup
+    is useful and safe there
+  - update `aidocs/STARTUP_FLOW.md` and focused tests if shutdown semantics
+    change
 - [ ] LOW PRIORITY STRETCH: Add expiring persisted source-IP allow-list support
   to the WireGuard/VPN plugin.
   Current Floyd-local behavior keeps `ALLOW_VPN` as a host-local iptables chain
