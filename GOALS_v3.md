@@ -40,10 +40,12 @@ We want to make the life of a robot administrator easier.
 
 #### Make most sensitive commands available privately
 Log and process inspection commands should be available in private command contexts.
+Status: done
 
 #### Plugin Crash Handling
 * Plugin crashes should log error/traceback to the robot's job channel
 * Built-in interpreters should likewise generate some kind of traceback or errors in a crash and send those to job channel
+Status: done
 
 #### Timeouts for Plugins and Jobs
 Plugins and Jobs should have timeouts; robot.yaml:
@@ -57,6 +59,7 @@ TimeOuts:
     Kill: 2h
 ```
 So, at `Warn`, the robot should message the administrators in the job channel that the plugin/job has been running a long time.
+Status: done
 
 #### Better PS plus inspection command
 * 'ps' should show the robot's ID for the pipeline, but not the underlying os pid, unless a "-v" verbose flag is given. It should also show the time when the command started.
@@ -83,6 +86,10 @@ child RPC boundary. Extension authors who need host commands should continue to
 use file-backed executable tasks/plugins or Go tasks with explicit privilege
 configuration rather than adding broad subprocess escape hatches to the Lua/JS
 APIs.
+
+Status: done - Lua only. Lua has a first-class http library and primitives for
+external system processes; see `plugins/wireguard.lua`. This is a poor fit for
+javascript, so not implemented.
 
 ### Backward Compatibility with v2 Custom Extensions, but Not Configuration
 To the greatest extent possible, custom extensions written to the robot API from v2 should continue to function unmodified. To support greater functionality, `robot.yaml` and other configuration will be changed, no longer supporting v2 configuration syntax. `UPGRADING-v3.md` will be the definitive guide for upgrading v2 robots to v3 robots.
@@ -114,6 +121,8 @@ The current preferred order for implementing or migrating functionality is:
 Lua first for readability and approachability, then Go for performance and safety, then JavaScript where appropriate.
 
 (NOTE: This ordering reflects current judgment and may evolve; the underlying intent—reducing external dependencies—should be treated as stable.)
+
+Status: DONE - All the included plugins, tasks and jobs have been replaced with natively interpreted versions.
 
 ### Improve the Extension Authoring Experience
 
