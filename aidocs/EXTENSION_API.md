@@ -133,6 +133,12 @@ Pipeline behavior notes:
 - `SetParameter(name, value string) bool`
 - `SetWorkingDirectory(path string) bool`
 
+Thread subscription lifecycle:
+- `Subscribe()` subscribes the current plugin to the current thread context.
+- Future unmatched messages in that subscribed thread invoke the plugin with engine command `_subscribed` and the full message text as the first argument.
+- When the engine expires an inactive subscription, it invokes the plugin asynchronously with engine command `_expiresub`; `GOPHER_PROTOCOL`, `GOPHER_CHANNEL`, and `GOPHER_THREAD_ID` identify the expired context.
+- Plugin configuration must not define commands beginning with `_`; that prefix is reserved for engine lifecycle callbacks.
+
 ## External JSON API (HTTP)
 
 External scripts (bash/python/ruby/etc.) call into the robot via JSON POSTs. The HTTP handler in `bot/http.go` dispatches on `FuncName` and `FuncArgs` and enforces the supported call set.

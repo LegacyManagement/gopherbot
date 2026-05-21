@@ -13,7 +13,7 @@ import (
 /*
 Thread subscriptions allow a plugin to Subscribe() to the current thread,
 so that all future messages to the thread which aren't commands will be sent
-to the plugin with a command of "subscribed". This is meant to replace message
+to the plugin with a command of "_subscribed". This is meant to replace message
 matchers that match all messages.
 */
 
@@ -34,6 +34,13 @@ type subscriptionMatcher struct {
 type subscriber struct {
 	Plugin    string    // the plugin subscribed
 	Timestamp time.Time // for expiring after subscriptionTimeout
+}
+
+type expiredSubscription struct {
+	Protocol string
+	Channel  string
+	Thread   string
+	Plugin   string
 }
 
 type tSubs struct {
@@ -242,7 +249,8 @@ func lookupSubscriptionLocked(protocol, channel, thread string) (subscriptionMat
 }
 
 // expireSubscriptions is called by the brainTicker
-func expireSubscriptions(now time.Time) bool {
+func expireSubscriptions(now time.Time) ([]expiredSubscription, bool) {
+	var expired []expiredSubscription
 	subscriptions.Lock()
 	for subscription, subscriber := range subscriptions.m {
 		if now.Sub(subscriber.Timestamp) > threadMemoryDuration {
@@ -252,10 +260,56 @@ func expireSubscriptions(now time.Time) bool {
 			if protocol == "" {
 				protocol = "unknown"
 			}
+			expired = append(expired, expiredSubscription{
+				Protocol: protocol,
+				Channel:  subscription.channel,
+				Thread:   subscription.thread,
+				Plugin:   subscriber.Plugin,
+			})
 			Log(robot.Debug, "Subscribe - expiring subscription for plugin '%s' on protocol '%s' to thread '%s' in channel '%s'", subscriber.Plugin, protocol, subscription.thread, subscription.channel)
 		}
 	}
 	updated := subscriptions.dirty
 	subscriptions.Unlock()
-	return updated
+	return expired, updated
+}
+
+func startExpiredSubscriptionPipelines(expired []expiredSubscription) {
+	if len(expired) == 0 {
+		return
+	}
+	currentCfg.RLock()
+	cfg := currentCfg.configuration
+	tasks := currentCfg.taskList
+	currentCfg.RUnlock()
+	if cfg == nil || tasks == nil {
+		Log(robot.Warn, "Subscribe - cannot start expired subscription callbacks before configuration is ready")
+		return
+	}
+	for _, sub := range expired {
+		t := tasks.getTaskByName(sub.Plugin)
+		if t == nil {
+			Log(robot.Warn, "Subscribe - expired subscription callback skipped, plugin '%s' not found", sub.Plugin)
+			continue
+		}
+		task, plugin, _ := getTask(t)
+		if plugin == nil {
+			Log(robot.Warn, "Subscribe - expired subscription callback skipped, subscriber '%s' is not a plugin", sub.Plugin)
+			continue
+		}
+		if task.Disabled {
+			Log(robot.Warn, "Subscribe - expired subscription callback skipped, plugin '%s' is disabled: %s", task.name, task.reason)
+			continue
+		}
+		w := &worker{
+			cfg:           cfg,
+			tasks:         tasks,
+			Protocol:      getProtocol(sub.Protocol),
+			Channel:       sub.Channel,
+			Incoming:      &robot.ConnectorMessage{Protocol: sub.Protocol, ChannelName: sub.Channel, ThreadID: sub.Thread, ThreadedMessage: sub.Thread != ""},
+			automaticTask: true,
+			id:            getWorkerID(),
+		}
+		go w.startPipeline(nil, t, plugThreadSubscription, "_expiresub")
+	}
 }

@@ -650,7 +650,7 @@ func (w *worker) getEnvironment(t interface{}) (env, parameters map[string]strin
 	envhash["GOPHER_CMDMODE"] = w.cmdMode
 	envhash["GOPHER_USER"] = w.User
 	envhash["GOPHER_USER_ID"] = w.ProtocolUser
-	envhash["GOPHER_PROTOCOL"] = strings.ToLower(w.Protocol.String())
+	envhash["GOPHER_PROTOCOL"] = protocolFromIncoming(w.Incoming, w.Protocol)
 	envhash["GOPHER_TASK_NAME"] = c.taskName
 	envhash["GOPHER_PIPELINE_TYPE"] = c.ptype.String()
 	// envhash["GOPHER_CALLER_ID"] = w.eid // now this is read from STDIN

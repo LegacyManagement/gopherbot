@@ -5,9 +5,7 @@ This document describes the current `go-ai-fallback` implementation and the memo
 Primary implementation target:
 - `plugins/go-ai-fallback/ai.go`
 
-Related jobs/config:
-- `jobs/go-ai-prune/go_ai_prune_job.go`
-- `conf/jobs/go-ai-prune.yaml`
+Related config:
 - `conf/plugins/ai-fallback.yaml`
 
 ## Runtime Flow
@@ -19,7 +17,7 @@ For each inbound AI fallback event, the plugin:
 4. queries a configured chat-completions provider with streaming responses
 5. stores updated conversation state back to datum storage
 
-Interactive path remains resilient: if compaction/prune helpers fail, the plugin falls back to deterministic/local behavior and continues replying.
+Interactive path remains resilient: if compaction helpers fail, the plugin falls back to deterministic/local behavior and continues replying.
 
 ## Storage Contract
 
@@ -42,7 +40,7 @@ Datum key:
 Index datum key:
 - `aifallback:conversation:index:v1`
 
-The index maps conversation ID -> `{key, updated_at}` for retention pruning.
+The index maps conversation ID -> `{key, updated_at}` for lifecycle cleanup.
 
 ## Conversation State
 
@@ -95,30 +93,21 @@ Important behavior:
 - model-assisted compaction is best-effort only
 - failures keep deterministic summary (no user-path failure)
 
-## Retention Pruning
+## Subscription Cleanup
 
-Pruning is done by scheduled job `go-ai-prune`, not by plugin-local schedule settings.
+Thread conversation cleanup is tied to the engine subscription lifecycle.
 
-Job behavior:
-1. read index datum
-2. select entries older than `RetentionDays`
-3. delete conversation datums (bounded by `MaxDeletesPerRun`)
-4. remove successfully deleted entries from index
-
-Job config:
-- `RetentionDays`
-- `MaxDeletesPerRun`
-- `DryRun`
-
-Schedule via `ScheduledJobs` cron in robot config.
+When the engine expires an inactive thread subscription, it invokes the plugin
+with `_expiresub` and sets `GOPHER_PROTOCOL`, `GOPHER_CHANNEL`, and
+`GOPHER_THREAD_ID` to the expired subscription context. The plugin derives the
+same thread conversation ID used during normal `_subscribed` handling, deletes
+the conversation datum, and removes the index entry.
 
 ## Testing
 
 Primary slice tests live in:
 - `plugins/go-ai-fallback/ai_test.go`
-- `jobs/go-ai-prune/go_ai_prune_job_test.go`
 
 Recommended validation command set:
 1. `go test ./plugins/go-ai-fallback`
-2. `GOCACHE=/tmp/gocache go test ./jobs/go-ai-prune`
-3. manual Slack/SSH validation on a real robot config
+2. manual Slack/SSH validation on a real robot config

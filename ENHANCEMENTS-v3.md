@@ -65,12 +65,12 @@ Why it matters:
 
 ### Durable AI Conversation Lifecycle (`Shipped`)
 
-AI chat context now uses long-term datums with an explicit index, retention pruning, and compaction behavior.
+AI chat context now uses long-term datums with an explicit index, subscription-lifecycle cleanup, and compaction behavior.
 
 Shipped behavior:
 - conversation state stored in datum-backed keys (with legacy short-term read fallback)
-- conversation index datum for prune traversal and cleanup
-- inactivity retention prune job (`go-ai-prune`) driven by `ScheduledJobs` cron
+- conversation index datum for lifecycle cleanup
+- inactive subscribed threads are deleted when the engine sends `_expiresub`
 - deterministic summary + recent-window compaction
 - optional model-assisted compaction with deterministic fallback on error
 

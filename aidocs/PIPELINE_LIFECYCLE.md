@@ -26,6 +26,9 @@ AI‑onboarding view: entrypoints, decision points, and data flow for message‑
 - Unmatched directed-command location diagnostics next: when no command/message/job matched, the engine may emit a first-class "wrong location" response if the text regex-matches exactly one plugin command that is available to the same user in a different channel or private context. This runs before catch-alls and suppresses hints for command-level authorization when user visibility cannot be determined confidently (for example, authorizers without `usergroups` support).
 - Catch‑alls (only when directly addressed and nothing matched): `bot/dispatch.go:handleMessage`.
 - Thread subscriptions last (`Subscribe`/`Unsubscribe`) keyed by `protocol/channel/thread`, with legacy fallback for restored pre-protocol keys: `bot/dispatch.go:handleMessage`, `bot/subscribe_thread.go`.
+  - Subscribed delivery invokes the owning plugin with engine command `_subscribed` and the full incoming message as the first argument.
+  - Subscription expiry invokes the owning plugin asynchronously with engine command `_expiresub`; `GOPHER_PROTOCOL`, `GOPHER_CHANNEL`, and `GOPHER_THREAD_ID` identify the expired subscription context.
+  - Plugin-authored command names beginning with `_` are rejected during configuration because that namespace is reserved for engine lifecycle callbacks.
 
 Catch-all mode scoping:
 - Plugins may optionally set `CatchAllModes` to any subset of `alias`, `name`, `direct`, `hidden`.
@@ -66,7 +69,7 @@ Catch-all mode scoping:
 ## Self-Message Routing Nuance (HearSelf-style flows)
 
 - `ConnectorMessage.SelfMessage=true` is treated specially.
-- Normal plugin paths (`Commands`, `MessageMatchers`, catch-alls, thread subscriptions) are gated behind `!w.Incoming.SelfMessage` checks in `bot/dispatch.go:handleMessage`.
+- Normal plugin paths (`Commands`, `MessageMatchers`, catch-alls, thread subscriptions) are gated behind `!w.Incoming.SelfMessage` checks in `bot/dispatch.go:handleMessage`; subscription expiry callbacks are engine-generated lifecycle calls and are not connector self-messages.
 - Job triggers are checked first in `bot/jobrun.go:checkJobMatchersAndRun`, before the self-message early return:
   - This enables a pattern where a robot emits a formatted message and then reacts to that same message via a trigger job (for example, to capture a started thread ID from `GOPHER_START_THREAD_ID`).
 - Practical implication: if you need plugin `MessageMatchers` to react, do not mark the inbound event as `SelfMessage=true`; if you need trigger-job reaction, `SelfMessage=true` is compatible.

@@ -80,3 +80,35 @@ Commands:
 		t.Fatalf("validate_yaml() error %q did not reference Helptext", err)
 	}
 }
+
+func TestValidateYAMLPluginRejectsEngineReservedCommand(t *testing.T) {
+	yml := []byte(`
+---
+Commands:
+- Command: _subscribed
+  Regex: '(?i:subscribed)'
+`)
+	err := validate_yaml("conf/plugins/example.yaml", yml)
+	if err == nil {
+		t.Fatalf("validate_yaml() accepted engine-reserved command")
+	}
+	if !strings.Contains(err.Error(), "reserved for engine use") || !strings.Contains(err.Error(), "_") {
+		t.Fatalf("validate_yaml() error %q did not explain reserved command namespace", err)
+	}
+}
+
+func TestValidateYAMLPluginRejectsEngineReservedMessageMatcherCommand(t *testing.T) {
+	yml := []byte(`
+---
+MessageMatchers:
+- Command: _ambient
+  Regex: '(?i:.*)'
+`)
+	err := validate_yaml("conf/plugins/example.yaml", yml)
+	if err == nil {
+		t.Fatalf("validate_yaml() accepted engine-reserved message matcher command")
+	}
+	if !strings.Contains(err.Error(), "reserved for engine use") || !strings.Contains(err.Error(), "_") {
+		t.Fatalf("validate_yaml() error %q did not explain reserved command namespace", err)
+	}
+}

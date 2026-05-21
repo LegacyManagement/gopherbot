@@ -103,7 +103,6 @@ Entries cite files like `main.go` and symbols like `Start` in `bot/start.go` for
 - Built-in shell/runtime job scripts: `jobs/install-libs.gsh`.
 - External shell job scripts: `jobs/logrotate.sh`.
 - Go job entrypoint example: `jobs/updatecfg/updatecfg.go` (func `JobHandler`).
-- AI conversation retention prune job: `jobs/go-ai-prune/go_ai_prune_job.go` (func `JobHandler`).
 - SSH onboarding welcome trigger job: `jobs/go-welcome-join/welcome_join.go` (func `JobHandler`).
 - SSH onboarding resume-on-join job: `jobs/go-resume-setup/resume_setup.go` (func `JobHandler`).
 

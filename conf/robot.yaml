@@ -303,10 +303,6 @@ ExternalJobs:
     Homed: true
     NameSpace: manage
     Path: jobs/go-switchbranch/switchbranches.go
-  "go-ai-prune":
-    Description: Prune stale go-ai-fallback conversation datums by retention
-    Homed: true
-    Path: jobs/go-ai-prune/go_ai_prune_job.go
   "install-libs":
     Description: A job for installing ruby gems and python packages
     Homed: true

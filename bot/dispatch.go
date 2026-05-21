@@ -432,7 +432,7 @@ func (w *worker) handleMessage() {
 			subscriptions.Unlock()
 			t := w.tasks.getTaskByName(subscription.Plugin)
 			Log(robot.Debug, "Unmatched message being routed to thread subscriber '%s' on protocol '%s' in thread '%s', channel '%s'", subscription.Plugin, incomingProtocol, w.Incoming.ThreadID, w.Channel)
-			w.startPipeline(nil, t, plugThreadSubscription, "subscribed", w.fmsg)
+			w.startPipeline(nil, t, plugThreadSubscription, "_subscribed", w.fmsg)
 		} else {
 			subscriptions.Unlock()
 		}

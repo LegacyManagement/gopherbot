@@ -64,6 +64,13 @@ func validate_yaml(filePath string, yamldata []byte) error {
 	if err := decoder.Decode(targetStruct); err != nil {
 		return fmt.Errorf("validation error in '%s': %v", filePath, err)
 	}
+	if fileType == "plugin" {
+		plugin := targetStruct.(*Plugin)
+		pluginName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+		if err := validatePluginCommandNames(pluginName, plugin.Commands, plugin.MessageMatchers); err != nil {
+			return fmt.Errorf("validation error in '%s': %v", filePath, err)
+		}
+	}
 
 	// Validation successful.
 	return nil

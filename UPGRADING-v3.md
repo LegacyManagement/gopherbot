@@ -50,6 +50,23 @@ For non-critical pilot robots before tagging 2.9.0:
 During the 2.9.0 pilot window, prefer bugfixes and UX fixes only. Avoid new
 configuration-breaking changes unless a pilot uncovers a critical defect.
 
+## 2026-05-21 Thread Subscription Lifecycle Commands
+
+Thread subscription callbacks now use engine-reserved command names:
+
+- subscribed thread messages invoke the subscriber plugin as `_subscribed`
+- subscription expiry invokes the subscriber plugin as `_expiresub`
+
+Plugin configuration may no longer define command names beginning with `_`.
+That prefix is reserved for engine lifecycle callbacks and `gopherbot validate`
+will reject custom plugin configs that use it.
+
+The optional `go-ai-prune` job has been removed. If a custom robot scheduled
+`go-ai-prune`, remove that `ScheduledJobs` entry and any
+`conf/jobs/go-ai-prune.yaml` override. The `ai-fallback` plugin now deletes
+thread conversation memory when the engine expires the corresponding thread
+subscription.
+
 ## 2026-05-20 Built-In Interpreter Context and Parameter Access
 
 New-style built-in interpreter extensions (Lua, JS, Gopherbot Shell, Yaegi Go)

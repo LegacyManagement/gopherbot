@@ -255,7 +255,9 @@ func PluginHandler(r robot.Robot, command string, args ...string) robot.TaskRetV
 		return handleStatus(r)
 	case "image":
 		return handleImage(r, args...)
-	case "ambient", "catchall", "subscribed":
+	case "_expiresub":
+		return handleExpiredSubscription(r)
+	case "ambient", "catchall", "_subscribed":
 		return handleConversationEntry(r, command, args...)
 	default:
 		return robot.Normal
@@ -409,6 +411,17 @@ func handleClose(r robot.Robot) robot.TaskRetVal {
 		return robot.Normal
 	}
 	r.Say("That command doesn't apply in this context.")
+	return robot.Normal
+}
+
+func handleExpiredSubscription(r robot.Robot) robot.TaskRetVal {
+	ctx := makeConversationContext(r)
+	if ctx.Direct || ctx.ThreadID == "" || ctx.ThreadID == "root" {
+		r.Log(robot.Warn, "ai-fallback: ignoring expired subscription without thread context")
+		return robot.Normal
+	}
+	deleteConversationState(r, ctx)
+	r.Log(robot.Info, "ai-fallback: deleted expired thread conversation id=%s", ctx.ConversationID)
 	return robot.Normal
 }
 

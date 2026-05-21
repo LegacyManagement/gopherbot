@@ -213,9 +213,12 @@ loop:
 			now := time.Now()
 			expireUserValidationRequests(now)
 			// Expire thread subscriptions - see thread_subscriptions.go
-			isDirty := expireSubscriptions(now)
+			expiredSubscriptions, isDirty := expireSubscriptions(now)
 			if isDirty {
 				go saveSubscriptions()
+			}
+			if len(expiredSubscriptions) > 0 {
+				go startExpiredSubscriptionPipelines(expiredSubscriptions)
 			}
 			ephemeralMemories.Lock()
 			for context, memory := range ephemeralMemories.m {

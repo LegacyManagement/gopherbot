@@ -599,6 +599,13 @@ LoadLoop:
 
 		// Compile the regex's
 		if isPlugin {
+			if err := validatePluginCommandNames(task.name, plugin.Commands, plugin.MessageMatchers); err != nil {
+				msg := fmt.Sprintf("Disabling '%s', %v", task.name, err)
+				Log(robot.Error, msg)
+				task.Disabled = true
+				task.reason = msg
+				continue LoadLoop
+			}
 			for i := range plugin.Commands {
 				command := &plugin.Commands[i]
 				if err := compileInputMatcher(command, true); err != nil {
