@@ -27,17 +27,6 @@ case "$command" in
 		FailTask tail-log
 		AddTask send-message "... switched to branch '$branch'"
 		;;
-	theia)
-		if [ ! -e "/usr/local/theia/src-gen/backend/main.js" ]
-		then
-			say "Theia installation not found. Wrong container?"
-			exit 0
-		fi
-		say "Ok, I'll start the Theia Gopherbot IDE..."
-		AddJob theia
-		FailTask say "Starting theia failed! (are you using the gopherbot-theia image?)"
-		AddTask say "... Theia finished"
-		;;
 	*)
 		exit $PLUGRET_NotFound
 		;;

@@ -58,14 +58,14 @@ func TestGetHelpMetadataFiltersAndMarksVisibility(t *testing.T) {
 			},
 			&Plugin{
 				Task: &Task{
-					name:     "theia-plugin",
+					name:     "deploy-tool",
 					Channels: []string{"devops"},
 				},
 				Commands: []InputMatcher{{
-					Command:  "start-ide",
-					Usage:    "(alias) start-ide",
-					Summary:  "Starts a remote IDE session.",
-					Keywords: []string{"launch", "server", "ide"},
+					Command:  "launch-preview",
+					Usage:    "(alias) launch-preview",
+					Summary:  "Launches a preview server.",
+					Keywords: []string{"launch", "server", "preview"},
 				}},
 			},
 			&Plugin{
@@ -83,9 +83,9 @@ func TestGetHelpMetadataFiltersAndMarksVisibility(t *testing.T) {
 			},
 		},
 		nameMap: map[string]int{
-			"lists":        1,
-			"theia-plugin": 2,
-			"admin-tool":   3,
+			"lists":       1,
+			"deploy-tool": 2,
+			"admin-tool":  3,
 		},
 		nameSpaces:    map[string]ParameterSet{},
 		parameterSets: map[string]ParameterSet{},
@@ -125,18 +125,18 @@ func TestGetHelpMetadataFiltersAndMarksVisibility(t *testing.T) {
 		if entry.PluginName == "admin-tool" {
 			t.Fatalf("admin-only command should not be browseable for non-admin user: %+v", entry)
 		}
-		if entry.PluginName == "theia-plugin" {
+		if entry.PluginName == "deploy-tool" {
 			foundBrowseableElsewhere = true
 			if entry.VisibleHere {
-				t.Fatalf("theia-plugin should not be marked visible here: %+v", entry)
+				t.Fatalf("deploy-tool should not be marked visible here: %+v", entry)
 			}
 			if len(entry.Channels) != 1 || entry.Channels[0] != "devops" {
-				t.Fatalf("theia-plugin channels = %+v, want [devops]", entry.Channels)
+				t.Fatalf("deploy-tool channels = %+v, want [devops]", entry.Channels)
 			}
 		}
 	}
 	if !foundBrowseableElsewhere {
-		t.Fatal("expected theia-plugin to be browseable outside the current channel")
+		t.Fatal("expected deploy-tool to be browseable outside the current channel")
 	}
 }
 
@@ -301,19 +301,19 @@ func TestCollectFallbackAdviceWrongChannel(t *testing.T) {
 			&Task{name: "namespace"},
 			&Plugin{
 				Task: &Task{
-					name:     "theia-plugin",
+					name:     "deploy-tool",
 					Channels: []string{"devops"},
 				},
 				Commands: []InputMatcher{{
-					Command:  "start-ide",
-					Usage:    "(alias) start-ide",
-					Summary:  "Starts a remote IDE session.",
-					Keywords: []string{"launch", "server", "ide"},
+					Command:  "launch-preview",
+					Usage:    "(alias) launch-preview",
+					Summary:  "Launches a preview server.",
+					Keywords: []string{"launch", "server", "preview"},
 				}},
 			},
 		},
 		nameMap: map[string]int{
-			"theia-plugin": 1,
+			"deploy-tool": 1,
 		},
 		nameSpaces:    map[string]ParameterSet{},
 		parameterSets: map[string]ParameterSet{},
@@ -340,8 +340,8 @@ func TestCollectFallbackAdviceWrongChannel(t *testing.T) {
 	if advice.Advice != fallbackAdviceWrongChannel {
 		t.Fatalf("advice = %q, want %q", advice.Advice, fallbackAdviceWrongChannel)
 	}
-	if len(advice.Elsewhere) != 1 || advice.Elsewhere[0].Command != "start-ide" {
-		t.Fatalf("elsewhere = %+v, want theia start-ide", advice.Elsewhere)
+	if len(advice.Elsewhere) != 1 || advice.Elsewhere[0].Command != "launch-preview" {
+		t.Fatalf("elsewhere = %+v, want deploy-tool launch-preview", advice.Elsewhere)
 	}
 	if advice.DeterministicReply == "" {
 		t.Fatal("expected deterministic reply")
