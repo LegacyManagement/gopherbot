@@ -21,7 +21,6 @@ If any ad-hoc instruction conflicts with this file, this file wins.
 Before proposing or implementing changes, read:
 1. `aidocs/README.md`
 2. `aidocs/COMPONENT_MAP.md`
-3. root `GOALS_v3.md`
 
 Then load only the canonical docs needed for the task scope.
 
@@ -31,8 +30,7 @@ In addition you must run full architecture preflight before coding when **any** 
 
 Read in order:
 1. `aidocs/STARTUP_FLOW.md`
-2. root `GOALS_v3.md`
-3. `aidocs/TESTING_CURRENT.md`
+2. `aidocs/TESTING_CURRENT.md`
 
 Then summarize in your own words:
 - core architectural invariants
