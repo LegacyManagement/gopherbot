@@ -4,6 +4,27 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
 
 ## Open TODOs
 
+- [ ] Investigate "assignment copies lock value" from "go vet ./bot"
+- [ ] Investigate and fix integration test failures:
+```
+TestBotName: FAIL - 2 test(s) failed
+TestHiddenPSAndGetPipelineLog: FAIL - 1 test(s) failed
+TestPipelineFailureAlertIncludesTracebackExcerpt: FAIL - 1 test(s) failed
+TestPipelineTimeoutWarnAndKillAlerts: FAIL - 1 test(s) failed
+TestPrompting: FAIL - 3 test(s) failed
+```
+- [ ] Add new builtin-userapproval elevator that takes a configured list of
+  users who can approve an action. Configuration should have FallbackApprovers,
+  the list of users who can approve if a specific plugin isn't listed, and
+  also `PluginApprovers.<pluginname>` which supercedes FallbackApprovers.
+  e.g.
+```
+FallbackApprovers: [ david, alice ]
+PluginApprovers:
+  wireguard: [ alice, bob, david ]
+```
+  NOTE: a built-in can examine r.pipeName to get the name of the
+  pipeline/plugin to check.
 - [x] HIGH PRIORITY: Research Lua/JS interpreter parity for command context
   environment variables used by legacy external scripts.
   Floyd WireGuard Lua spike on May 20, 2026 found that a privileged built-in Lua
@@ -35,7 +56,7 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
   disambiguate test failures. Add per-test "Description" that describes
   the end-to-end behavior that particular test is meant to be testing,
   for similar reasons.
-- [ ] Survey built-ins to see which ones are intended for administrators
+- [x] Survey built-ins to see which ones are intended for administrators
   (e.g. logging), then update configuration in line with other admin
   commands - e.g. available hidden.
 - [ ] Enforce non-empty job channel - jobs must use a real channel, not a
@@ -76,7 +97,7 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
     streaming full output into model context.
   - Suite metadata now supports targeted selectors for subsystem, tag, runtime,
     and tier.
-- [ ] Add privsep-only integration suites that require a real setuid
+- [x] Add privsep-only integration suites that require a real setuid
   integration binary. This remains intentionally separate from the normal
   process-backed suite because it requires host-level install state.
 - [ ] Run and record a final clean-build full integration pass before tagging
