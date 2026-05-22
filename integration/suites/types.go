@@ -96,6 +96,9 @@ type Failure struct {
 	Step     string `json:"step"`
 	Error    string `json:"error"`
 	TimedOut bool   `json:"timed_out,omitempty"`
+	Sent     string `json:"sent,omitempty"`
+	Expected string `json:"expected,omitempty"`
+	Seen     string `json:"seen,omitempty"`
 }
 
 type RunOptions struct {
@@ -165,13 +168,16 @@ func RunSuiteWithOptions(ctx context.Context, d Driver, s Suite, opts RunOptions
 func RunCases(ctx context.Context, d Driver, suiteName string, cases []Case) []Failure {
 	opts := runOptionsFromContext(ctx)
 	failures := make([]Failure, 0)
-	addFailure := func(c Case, step string, timedOut bool, format string, args ...interface{}) {
+	addFailure := func(c Case, step string, timedOut bool, sent, expected, seen, format string, args ...interface{}) {
 		failures = append(failures, Failure{
 			Suite:    suiteName,
 			Case:     c.Name,
 			Step:     step,
 			Error:    fmt.Sprintf(format, args...),
 			TimedOut: timedOut,
+			Sent:     sent,
+			Expected: expected,
+			Seen:     seen,
 		})
 	}
 
@@ -183,7 +189,7 @@ func RunCases(ctx context.Context, d Driver, suiteName string, cases []Case) []F
 		logStep(d, suiteName, c.Name, "case", "start timeout=%s", opts.CaseTimeout)
 		if err := d.WaitForIdle(caseCtx); err != nil {
 			timedOut := contextTimedOut(caseCtx, err)
-			addFailure(c, "wait-before", timedOut, "%v", err)
+			addFailure(c, "wait-before", timedOut, "", "", "", "%v", err)
 			cancel()
 			if timedOut {
 				return failures
@@ -192,7 +198,7 @@ func RunCases(ctx context.Context, d Driver, suiteName string, cases []Case) []F
 		}
 		if _, err := d.DrainEvents(caseCtx); err != nil {
 			timedOut := contextTimedOut(caseCtx, err)
-			addFailure(c, "drain-before", timedOut, "%v", err)
+			addFailure(c, "drain-before", timedOut, "", "", "", "%v", err)
 			cancel()
 			if timedOut {
 				return failures
@@ -210,7 +216,7 @@ func RunCases(ctx context.Context, d Driver, suiteName string, cases []Case) []F
 		}
 		if err := d.Send(caseCtx, input); err != nil {
 			timedOut := contextTimedOut(caseCtx, err)
-			addFailure(c, "send", timedOut, "%v", err)
+			addFailure(c, "send", timedOut, input.Text, "", "", "%v", err)
 			cancel()
 			if timedOut {
 				return failures
@@ -224,7 +230,7 @@ func RunCases(ctx context.Context, d Driver, suiteName string, cases []Case) []F
 			got, err := d.Receive(caseCtx, want)
 			if err != nil {
 				timedOut := contextTimedOut(caseCtx, err)
-				addFailure(c, "receive", timedOut, "timeout waiting for reply %q: %v", want.TextPattern, err)
+				addFailure(c, "receive", timedOut, input.Text, want.TextPattern, "", "timeout waiting for reply %q: %v", want.TextPattern, err)
 				if timedOut {
 					cancel()
 					return failures
@@ -232,20 +238,20 @@ func RunCases(ctx context.Context, d Driver, suiteName string, cases []Case) []F
 				continue
 			}
 			if err := matchMessage(want, got); err != nil {
-				addFailure(c, "reply", false, "%v", err)
+				addFailure(c, "reply", false, input.Text, want.TextPattern, got.Text, "%v", err)
 			}
 		}
 		if !c.RepliesOnly {
 			gotEvents, err := d.DrainEvents(caseCtx)
 			if err != nil {
 				timedOut := contextTimedOut(caseCtx, err)
-				addFailure(c, "events", timedOut, "%v", err)
+				addFailure(c, "events", timedOut, input.Text, "", "", "%v", err)
 				if timedOut {
 					cancel()
 					return failures
 				}
 			} else if err := matchEvents(c.Events, gotEvents); err != nil {
-				addFailure(c, "events", false, "%v", err)
+				addFailure(c, "events", false, input.Text, eventNames(c.Events), eventNames(gotEvents), "%v", err)
 			}
 		}
 		if c.Pause > 0 {
@@ -254,7 +260,7 @@ func RunCases(ctx context.Context, d Driver, suiteName string, cases []Case) []F
 			case <-caseCtx.Done():
 				timer.Stop()
 				timedOut := contextTimedOut(caseCtx, caseCtx.Err())
-				addFailure(c, "pause", timedOut, "%v", caseCtx.Err())
+				addFailure(c, "pause", timedOut, "", "", "", "%v", caseCtx.Err())
 				cancel()
 				if timedOut {
 					return failures
@@ -264,7 +270,7 @@ func RunCases(ctx context.Context, d Driver, suiteName string, cases []Case) []F
 		}
 		if err := d.WaitForIdle(caseCtx); err != nil {
 			timedOut := contextTimedOut(caseCtx, err)
-			addFailure(c, "wait-after", timedOut, "%v", err)
+			addFailure(c, "wait-after", timedOut, "", "", "", "%v", err)
 			cancel()
 			if timedOut {
 				return failures
@@ -273,7 +279,7 @@ func RunCases(ctx context.Context, d Driver, suiteName string, cases []Case) []F
 		}
 		if _, err := d.DrainEvents(caseCtx); err != nil {
 			timedOut := contextTimedOut(caseCtx, err)
-			addFailure(c, "drain-after", timedOut, "%v", err)
+			addFailure(c, "drain-after", timedOut, "", "", "", "%v", err)
 			cancel()
 			if timedOut {
 				return failures

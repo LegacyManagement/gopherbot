@@ -56,6 +56,7 @@ type suiteReportEntry struct {
 	Suite        string
 	FailureCount int
 	RunError     string
+	Failures     []suites.Failure
 }
 
 func main() {
@@ -245,20 +246,21 @@ func runSuiteCommand(args []string) int {
 	suite := selected[0]
 	outcome := runOneSuite(root, absOutputRoot, suite, *live, *timeout, *caseTimeout, *runID)
 	report := []suiteReportEntry{suiteReportEntryFromOutcome(suite.Name, outcome)}
-	if err := writeSuiteReportFile(filepath.Join(filepath.Dir(outcome.result.OutputDir), suiteSummaryFile), report); err != nil {
+	summaryPath := filepath.Join(filepath.Dir(outcome.result.OutputDir), suiteSummaryFile)
+	if err := writeSuiteReportFile(summaryPath, report); err != nil {
 		fmt.Fprintf(os.Stderr, "writing suite summary: %v\n", err)
 		return 1
 	}
 	if outcome.err != nil {
 		fmt.Fprintf(os.Stderr, "suite %s failed to run: %v\n", suite.Name, outcome.err)
 		if *summary {
-			printSuiteReport(os.Stdout, report)
+			printSuiteReport(os.Stdout, report, summaryPath)
 		}
 		return 1
 	}
 	printSuiteSummary(outcome.result)
 	if *summary {
-		printSuiteReport(os.Stdout, report)
+		printSuiteReport(os.Stdout, report, summaryPath)
 	}
 	if len(outcome.result.Failures) > 0 {
 		return 1
@@ -485,11 +487,12 @@ func runSuites(outputRoot string, selected []suites.Suite, live bool, timeout, c
 		report = append(report, suiteReportEntryFromResult(suite.Name, result, runErr))
 	}
 	fmt.Printf("Results recorded in: %s\n", runRoot)
-	if err := writeSuiteReportFile(filepath.Join(runRoot, suiteSummaryFile), report); err != nil {
+	summaryPath := filepath.Join(runRoot, suiteSummaryFile)
+	if err := writeSuiteReportFile(summaryPath, report); err != nil {
 		fmt.Fprintf(os.Stderr, "writing suite summary: %v\n", err)
 		return 1
 	}
-	printSuiteReport(os.Stdout, report)
+	printSuiteReport(os.Stdout, report, summaryPath)
 	return code
 }
 
@@ -958,6 +961,7 @@ func suiteReportEntryFromResult(defaultSuite string, result suiteResult, runErr 
 	entry := suiteReportEntry{
 		Suite:        suiteName,
 		FailureCount: len(result.Failures),
+		Failures:     result.Failures,
 	}
 	if runErr != nil && entry.FailureCount == 0 {
 		entry.RunError = runErr.Error()
@@ -968,17 +972,35 @@ func suiteReportEntryFromResult(defaultSuite string, result suiteResult, runErr 
 	return entry
 }
 
-func printSuiteReport(out io.Writer, entries []suiteReportEntry) {
+func printSuiteReport(out io.Writer, entries []suiteReportEntry, summaryPath string) {
 	if len(entries) == 0 {
 		return
 	}
 	fmt.Fprintln(out, "Summary report:")
+	hasFailures := false
 	for _, entry := range entries {
 		fmt.Fprintln(out, formatSuiteReportLine(entry))
+		if entry.FailureCount > 0 {
+			hasFailures = true
+		}
+	}
+	if hasFailures && summaryPath != "" {
+		fmt.Fprintf(out, "Test failure summary written to %s\n", summaryPath)
 	}
 }
 
 func writeSuiteReportFile(path string, entries []suiteReportEntry) error {
+	hasFailures := false
+	for _, e := range entries {
+		if e.FailureCount > 0 {
+			hasFailures = true
+			break
+		}
+	}
+	if !hasFailures {
+		return nil
+	}
+
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
@@ -987,7 +1009,30 @@ func writeSuiteReportFile(path string, entries []suiteReportEntry) error {
 		return err
 	}
 	defer f.Close()
-	printSuiteReport(f, entries)
+
+	for _, entry := range entries {
+		if entry.FailureCount == 0 {
+			continue
+		}
+		for _, failure := range entry.Failures {
+			fmt.Fprintf(f, "Suite: %s\n", failure.Suite)
+			if failure.Case != "" && failure.Case != failure.Suite {
+				fmt.Fprintf(f, "Case: %s\n", failure.Case)
+			}
+			fmt.Fprintf(f, "Step: %s\n", failure.Step)
+			if failure.Sent != "" {
+				fmt.Fprintf(f, "Sent: %s\n", failure.Sent)
+			}
+			if failure.Expected != "" {
+				fmt.Fprintf(f, "Expected: %s\n", failure.Expected)
+			}
+			if failure.Seen != "" {
+				fmt.Fprintf(f, "Seen: %s\n", failure.Seen)
+			}
+			fmt.Fprintf(f, "Error: %s\n", failure.Error)
+			fmt.Fprintln(f, "--------------------------------------------------------------------------------")
+		}
+	}
 	return nil
 }
 
