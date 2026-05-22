@@ -57,6 +57,10 @@ type suiteReportEntry struct {
 	FailureCount int
 	RunError     string
 	Failures     []suites.Failure
+	OutputDir    string
+	ResultPath   string
+	Transcript   string
+	RobotLog     string
 }
 
 func main() {
@@ -962,6 +966,10 @@ func suiteReportEntryFromResult(defaultSuite string, result suiteResult, runErr 
 		Suite:        suiteName,
 		FailureCount: len(result.Failures),
 		Failures:     result.Failures,
+		OutputDir:    result.OutputDir,
+		ResultPath:   result.ResultPath,
+		Transcript:   result.Transcript,
+		RobotLog:     result.RobotLog,
 	}
 	if runErr != nil && entry.FailureCount == 0 {
 		entry.RunError = runErr.Error()
@@ -1010,30 +1018,78 @@ func writeSuiteReportFile(path string, entries []suiteReportEntry) error {
 	}
 	defer f.Close()
 
+	writeFailureReport(f, entries)
+	return nil
+}
+
+func writeFailureReport(out io.Writer, entries []suiteReportEntry) {
+	fmt.Fprintln(out, "Integration failure summary")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Failed suites:")
+	for _, entry := range entries {
+		if entry.FailureCount > 0 {
+			fmt.Fprintf(out, "- %s: %d failure(s)\n", entry.Suite, entry.FailureCount)
+		}
+	}
+
 	for _, entry := range entries {
 		if entry.FailureCount == 0 {
 			continue
 		}
-		for _, failure := range entry.Failures {
-			fmt.Fprintf(f, "Suite: %s\n", failure.Suite)
-			if failure.Case != "" && failure.Case != failure.Suite {
-				fmt.Fprintf(f, "Case: %s\n", failure.Case)
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, strings.Repeat("=", 80))
+		fmt.Fprintf(out, "Suite: %s (%d failure(s))\n", entry.Suite, entry.FailureCount)
+		writeArtifactLine(out, "Result", entry.ResultPath)
+		writeArtifactLine(out, "Transcript", entry.Transcript)
+		writeArtifactLine(out, "Robot log", entry.RobotLog)
+		writeArtifactLine(out, "Artifacts", entry.OutputDir)
+
+		currentCase := ""
+		for i, failure := range entry.Failures {
+			caseName := failure.Case
+			if caseName == "" {
+				caseName = failure.Suite
 			}
-			fmt.Fprintf(f, "Step: %s\n", failure.Step)
-			if failure.Sent != "" {
-				fmt.Fprintf(f, "Sent: %s\n", failure.Sent)
+			if caseName != currentCase {
+				currentCase = caseName
+				fmt.Fprintln(out)
+				fmt.Fprintf(out, "Case: %s\n", currentCase)
+				if failure.Sent != "" {
+					writeReportBlock(out, "Input", failure.Sent)
+				}
 			}
+			fmt.Fprintln(out)
+			fmt.Fprintf(out, "Failure %d: %s\n", i+1, failure.Step)
+			writeReportBlock(out, "Error", failure.Error)
 			if failure.Expected != "" {
-				fmt.Fprintf(f, "Expected: %s\n", failure.Expected)
+				writeReportBlock(out, "Expected", failure.Expected)
 			}
 			if failure.Seen != "" {
-				fmt.Fprintf(f, "Seen: %s\n", failure.Seen)
+				writeReportBlock(out, "Seen", failure.Seen)
 			}
-			fmt.Fprintf(f, "Error: %s\n", failure.Error)
-			fmt.Fprintln(f, "--------------------------------------------------------------------------------")
+			if failure.TimedOut {
+				fmt.Fprintln(out, "  Timed out: true")
+			}
 		}
 	}
-	return nil
+}
+
+func writeArtifactLine(out io.Writer, label, value string) {
+	if value == "" {
+		return
+	}
+	fmt.Fprintf(out, "%s: %s\n", label, value)
+}
+
+func writeReportBlock(out io.Writer, label, value string) {
+	value = strings.TrimRight(value, "\n")
+	if value == "" {
+		return
+	}
+	fmt.Fprintf(out, "%s:\n", label)
+	for _, line := range strings.Split(value, "\n") {
+		fmt.Fprintf(out, "  %s\n", line)
+	}
 }
 
 func formatSuiteReportLine(entry suiteReportEntry) string {

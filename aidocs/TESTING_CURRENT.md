@@ -65,8 +65,10 @@ Forward plan:
 - `gopherbot-integration run-suite` prints a final "Summary report" after the
   selected suite run completes. Each selected suite is listed as
   `<SuiteName>: PASS` or `<SuiteName>: FAIL - <n> test(s) failed`.
-  The same report is also written to `FailSummary.out` in the run directory,
-  next to the suite artifact directories.
+  When failures occur, `FailSummary.out` is written in the run directory next
+  to the suite artifact directories. It groups failures by suite and case,
+  shows the triggering input once per case, includes artifact paths, and prints
+  each failed step with readable `Error`, `Expected`, and `Seen` blocks.
 - `gopherbot-integration run-suite` also accepts exact suite names, glob
   patterns such as `TestLuaFull*`, multiple selectors as separate CLI
   arguments, and comma-separated selector lists for MCP calls. Any selector
@@ -81,9 +83,11 @@ Forward plan:
   `read_integration_result`. `run_integration_suite` builds
   `gopherbot-integration` by default, runs the selected suite with output
   redirected to artifact files, and returns a compact summary plus paths,
-  including `results_root` for the common output directory. It passes
-  `case_timeout_ms` through to `gopherbot-integration` when supplied; the
-  default is `14000`.
+  including `results_root` for the common output directory. The compact summary
+  includes `failed_suites` and `failed_tests`; each failed test preserves the
+  structured input/expected/seen fields and a short preformatted report string.
+  It passes `case_timeout_ms` through to `gopherbot-integration` when supplied;
+  the default is `14000`.
 - `make integration-mcp TEST=<SuiteName>` wraps `gopherbot-mcp`
   `run_integration_suite` for local/AI use. Prefer this wrapper when running
   from Codex so the already-approved `make` path is used instead of repeatedly

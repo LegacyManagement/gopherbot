@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lnxjedi/gopherbot/v2/integration/suites"
 )
 
 func TestResolveSuiteSelectorsBySubsystem(t *testing.T) {
@@ -76,12 +78,13 @@ func TestPrintSuiteReport(t *testing.T) {
 	printSuiteReport(&out, []suiteReportEntry{
 		{Suite: "TestBotName"},
 		{Suite: "TestMessageMatch", FailureCount: 1},
-	})
+	}, "/tmp/FailSummary.out")
 	got := out.String()
 	for _, want := range []string{
 		"Summary report:\n",
 		"TestBotName: PASS\n",
 		"TestMessageMatch: FAIL - 1 test(s) failed\n",
+		"Test failure summary written to /tmp/FailSummary.out\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("summary report missing %q in:\n%s", want, got)
@@ -93,7 +96,34 @@ func TestWriteSuiteReportFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "run", suiteSummaryFile)
 	if err := writeSuiteReportFile(path, []suiteReportEntry{
 		{Suite: "TestBotName"},
-		{Suite: "TestMessageMatch", FailureCount: 2},
+		{
+			Suite:        "TestMessageMatch",
+			FailureCount: 2,
+			ResultPath:   "/tmp/run/TestMessageMatch/result.json",
+			Transcript:   "/tmp/run/TestMessageMatch/transcript.txt",
+			RobotLog:     "/tmp/run/TestMessageMatch/robot.log",
+			OutputDir:    "/tmp/run/TestMessageMatch",
+			Failures: []suites.Failure{
+				{
+					Suite:    "TestMessageMatch",
+					Case:     "case-014",
+					Step:     "reply",
+					Error:    "message regex mismatch",
+					Sent:     "bender: echo hello world",
+					Expected: "expected reply",
+					Seen:     "actual reply",
+				},
+				{
+					Suite:    "TestMessageMatch",
+					Case:     "case-014",
+					Step:     "events",
+					Error:    "event count mismatch",
+					Sent:     "bender: echo hello world",
+					Expected: "CatchAllsRan, CatchAllTaskRan",
+					Seen:     "CatchAllsRan",
+				},
+			},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -103,9 +133,18 @@ func TestWriteSuiteReportFile(t *testing.T) {
 	}
 	got := string(data)
 	for _, want := range []string{
-		"Summary report:\n",
-		"TestBotName: PASS\n",
-		"TestMessageMatch: FAIL - 2 test(s) failed\n",
+		"Integration failure summary\n",
+		"Failed suites:\n",
+		"- TestMessageMatch: 2 failure(s)\n",
+		"Suite: TestMessageMatch (2 failure(s))\n",
+		"Result: /tmp/run/TestMessageMatch/result.json\n",
+		"Transcript: /tmp/run/TestMessageMatch/transcript.txt\n",
+		"Case: case-014\n",
+		"Input:\n  bender: echo hello world\n",
+		"Failure 1: reply\n",
+		"Expected:\n  expected reply\n",
+		"Seen:\n  actual reply\n",
+		"Failure 2: events\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("summary file missing %q in:\n%s", want, got)

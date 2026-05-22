@@ -1512,7 +1512,12 @@ type integrationFailure struct {
 	Step     string `json:"step"`
 	Error    string `json:"error"`
 	TimedOut bool   `json:"timed_out,omitempty"`
+	Sent     string `json:"sent,omitempty"`
+	Expected string `json:"expected,omitempty"`
+	Seen     string `json:"seen,omitempty"`
 }
+
+const integrationFailureSummaryFile = "FailSummary.out"
 
 func (s *mcpServer) toolListIntegrationSuites(args map[string]interface{}) (map[string]interface{}, error) {
 	build, err := optionalBoolArg(args, "build", false)
@@ -1762,7 +1767,17 @@ func (s *mcpServer) toolRunIntegrationSuite(args map[string]interface{}) (map[st
 		"results_root":                 resultsRoot,
 		"result_count":                 len(results),
 		"results":                      results,
+		"summary":                      summarizeIntegrationResults(results),
 		"warnings":                     warnings,
+	}
+	if summary, summaryErr := readIntegrationFailureSummary(resultsRoot, tailLines, 262144); summaryErr == nil && summary != nil {
+		payload["failure_summary"] = summary
+	} else if summaryErr != nil {
+		warnings = append(warnings, map[string]interface{}{
+			"path":  filepath.Join(resultsRoot, integrationFailureSummaryFile),
+			"error": summaryErr.Error(),
+		})
+		payload["warnings"] = warnings
 	}
 	if buildResult != nil {
 		payload["build"] = buildResult
@@ -1852,12 +1867,25 @@ func (s *mcpServer) toolReadIntegrationResult(args map[string]interface{}) (map[
 		})
 	}
 	results, warnings := readIntegrationResultSummaries(resultPaths, includeLogTail, tailLines, maxBytes)
-	return map[string]interface{}{
+	payload := map[string]interface{}{
 		"artifact_path": resolved,
 		"result_count":  len(results),
 		"results":       results,
+		"summary":       summarizeIntegrationResults(results),
 		"warnings":      warnings,
-	}, nil
+	}
+	summaries, summaryErr := discoverIntegrationFailureSummaryFiles(resolved)
+	if summaryErr != nil {
+		warnings = append(warnings, map[string]interface{}{
+			"path":  resolved,
+			"error": summaryErr.Error(),
+		})
+		payload["warnings"] = warnings
+	} else if len(summaries) > 0 {
+		payload["failure_summaries"] = readIntegrationFailureSummaries(summaries, tailLines, maxBytes, &warnings)
+		payload["warnings"] = warnings
+	}
+	return payload, nil
 }
 
 func (s *mcpServer) buildIntegrationBinary(logPath string, timeout time.Duration) (map[string]interface{}, error) {
@@ -1972,6 +2000,42 @@ func discoverIntegrationResultFiles(path string) ([]string, error) {
 	return discoverIntegrationFiles(path, "result.json")
 }
 
+func discoverIntegrationFailureSummaryFiles(path string) ([]string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("checking integration artifact path '%s': %w", path, err)
+	}
+	if !info.IsDir() {
+		if filepath.Base(path) == integrationFailureSummaryFile {
+			return []string{path}, nil
+		}
+		candidate := filepath.Join(filepath.Dir(filepath.Dir(path)), integrationFailureSummaryFile)
+		if _, err := os.Stat(candidate); err == nil {
+			return []string{candidate}, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("checking integration failure summary '%s': %w", candidate, err)
+		}
+		return nil, nil
+	}
+	summaries, err := discoverIntegrationFiles(path, integrationFailureSummaryFile)
+	if err != nil {
+		return nil, err
+	}
+	if len(summaries) > 0 {
+		return summaries, nil
+	}
+	candidate := filepath.Join(filepath.Dir(path), integrationFailureSummaryFile)
+	if _, err := os.Stat(candidate); err == nil {
+		return []string{candidate}, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("checking integration failure summary '%s': %w", candidate, err)
+	}
+	return nil, nil
+}
+
 func discoverIntegrationFiles(path, filename string) ([]string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -2058,6 +2122,126 @@ func readIntegrationResultSummaries(paths []string, includeLogTail bool, tailLin
 		results = append(results, summary)
 	}
 	return results, warnings
+}
+
+func readIntegrationFailureSummary(resultsRoot string, tailLines, maxBytes int) (map[string]interface{}, error) {
+	path := filepath.Join(resultsRoot, integrationFailureSummaryFile)
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("checking integration failure summary '%s': %w", path, err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("integration failure summary path '%s' is a directory", path)
+	}
+	tail, err := integrationLogTail(path, tailLines, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	text, _ := tail["text"].(string)
+	return map[string]interface{}{
+		"path": path,
+		"tail": tail,
+		"text": text,
+	}, nil
+}
+
+func readIntegrationFailureSummaries(paths []string, tailLines, maxBytes int, warnings *[]map[string]interface{}) []map[string]interface{} {
+	summaries := make([]map[string]interface{}, 0, len(paths))
+	for _, path := range paths {
+		tail, err := integrationLogTail(path, tailLines, maxBytes)
+		if err != nil {
+			*warnings = append(*warnings, map[string]interface{}{
+				"path":  path,
+				"error": err.Error(),
+			})
+			continue
+		}
+		text, _ := tail["text"].(string)
+		summaries = append(summaries, map[string]interface{}{
+			"path": path,
+			"tail": tail,
+			"text": text,
+		})
+	}
+	return summaries
+}
+
+func summarizeIntegrationResults(results []map[string]interface{}) map[string]interface{} {
+	summary := map[string]interface{}{
+		"suite_count":   len(results),
+		"passed_count":  0,
+		"failed_count":  0,
+		"failed_suites": []map[string]interface{}{},
+		"failed_tests":  []map[string]interface{}{},
+	}
+	failedSuites := make([]map[string]interface{}, 0)
+	failedTests := make([]map[string]interface{}, 0)
+	passedCount := 0
+	for _, result := range results {
+		suite, _ := result["suite"].(string)
+		resultPath, _ := result["result_path"].(string)
+		passed, _ := result["passed"].(bool)
+		failures, _ := result["failures"].([]integrationFailure)
+		if passed {
+			passedCount++
+			continue
+		}
+		failedSuites = append(failedSuites, map[string]interface{}{
+			"suite":         suite,
+			"failure_count": len(failures),
+			"result_path":   resultPath,
+		})
+		for _, failure := range failures {
+			failedTests = append(failedTests, map[string]interface{}{
+				"suite":       failure.Suite,
+				"case":        failure.Case,
+				"step":        failure.Step,
+				"error":       failure.Error,
+				"timed_out":   failure.TimedOut,
+				"sent":        failure.Sent,
+				"expected":    failure.Expected,
+				"seen":        failure.Seen,
+				"report":      formatIntegrationFailureReport(failure),
+				"result_path": resultPath,
+			})
+		}
+	}
+	summary["passed_count"] = passedCount
+	summary["failed_count"] = len(failedSuites)
+	summary["failed_suites"] = failedSuites
+	summary["failed_tests"] = failedTests
+	return summary
+}
+
+func formatIntegrationFailureReport(failure integrationFailure) string {
+	var b strings.Builder
+	if failure.Case != "" {
+		fmt.Fprintf(&b, "%s / %s / %s\n", failure.Suite, failure.Case, failure.Step)
+	} else {
+		fmt.Fprintf(&b, "%s / %s\n", failure.Suite, failure.Step)
+	}
+	writeCompactReportBlock(&b, "Input", failure.Sent)
+	writeCompactReportBlock(&b, "Expected", failure.Expected)
+	writeCompactReportBlock(&b, "Seen", failure.Seen)
+	writeCompactReportBlock(&b, "Error", failure.Error)
+	if failure.TimedOut {
+		b.WriteString("Timed out: true\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func writeCompactReportBlock(b *strings.Builder, label, value string) {
+	value = strings.TrimRight(value, "\n")
+	if value == "" {
+		return
+	}
+	fmt.Fprintf(b, "%s:\n", label)
+	for _, line := range strings.Split(value, "\n") {
+		fmt.Fprintf(b, "  %s\n", line)
+	}
 }
 
 func allIntegrationResultsPassed(results []map[string]interface{}) bool {

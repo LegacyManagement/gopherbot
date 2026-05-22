@@ -18,7 +18,7 @@ EOF
 }
 
 case "$command" in
-	"configure")
+	"_configure")
 		configure
 		;;
 	"inspect")

@@ -6,4 +6,4 @@
 AllChannels: true
 CatchAll: true
 AllowedPrivateCommands:
-- catchall
+- _catchall
