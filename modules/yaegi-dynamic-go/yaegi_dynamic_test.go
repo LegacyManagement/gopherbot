@@ -130,7 +130,7 @@ func TestRunPluginHandlerYaegiRobotHelpMetadataMethodCompiles(t *testing.T) {
 	pluginPath := writeTempPlugin(t, yaegiPluginUsingHelpMetadata())
 	logger := &testLogger{}
 
-	ret, err := RunPluginHandler(pluginPath, "help-metadata-repro", nil, nil, logger, false, "catchall")
+	ret, err := RunPluginHandler(pluginPath, "help-metadata-repro", nil, nil, logger, false, "_catchall")
 	if err != nil {
 		t.Fatalf("RunPluginHandler help metadata error = %v", err)
 	}

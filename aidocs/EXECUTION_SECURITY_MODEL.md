@@ -35,7 +35,7 @@ This document describes how pipeline execution and privilege separation currentl
     - `.gsh` -> child RPC process (`gopherbot pipeline-child-rpc`) via parent-managed `gsh_run` / `gsh_get_config` / `robot_call`.
     - `.go` -> child RPC process (`gopherbot pipeline-child-rpc`) via parent-managed `go_plugin_run` / `go_job_run` / `go_task_run` / `robot_call`.
   - external executable (non-interpreter path) -> child process runner (`gopherbot pipeline-child-exec`) via `callTask` options.
-  - external executable plugin default-config (`configure`) -> child process runner from `getDefCfgThread`.
+  - external executable plugin default-config (`_configure`) -> child process runner from `getDefCfgThread`.
   - external Lua plugin default-config -> child RPC process via `lua_get_config`.
   - external JavaScript plugin default-config -> child RPC process via `js_get_config`.
   - external Gopherbot shell plugin default-config -> child RPC process via `gsh_get_config`.

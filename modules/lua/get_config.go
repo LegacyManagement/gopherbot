@@ -6,7 +6,7 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-// GetPluginConfig calls the given Lua script with the argument "configure".
+// GetPluginConfig calls the given Lua script with the argument "_configure".
 // We expect the script to return a YAML string that we convert to *[]byte.
 func GetPluginConfig(execPath, taskPath, taskName string, emptyBot map[string]string, pkgPath []string) (*[]byte, error) {
 	L := glua.NewState()
@@ -18,8 +18,8 @@ func GetPluginConfig(execPath, taskPath, taskName string, emptyBot map[string]st
 		emptyBot,
 	}
 
-	// Add the Lua arg table for "configure"
-	addArgTable(L, execPath, taskPath, "configure")
+	// Add the Lua arg table for "_configure"
+	addArgTable(L, execPath, taskPath, "_configure")
 
 	// Modify OS functions to replace os.setenv and os.setlocale with no-ops
 	modifyOSFunctions(L, nil)
@@ -55,7 +55,7 @@ func GetPluginConfig(execPath, taskPath, taskName string, emptyBot map[string]st
 	cfgStr, ok := retVal.(glua.LString)
 	if !ok {
 		// If the script didn't return a string, that’s an error
-		return nil, fmt.Errorf("Lua plugin %s did not return a YAML string from 'configure'", taskName)
+		return nil, fmt.Errorf("Lua plugin %s did not return a YAML string from '_configure'", taskName)
 	}
 
 	// Convert to []byte

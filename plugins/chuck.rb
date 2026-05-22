@@ -24,7 +24,7 @@ DEFCONFIG
 command = ARGV.shift()
 
 case command
-when "configure"
+when "_configure"
 	puts defaultConfig
 	exit
 when "chuck"

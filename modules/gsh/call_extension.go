@@ -44,12 +44,12 @@ func CallExtension(taskPath, taskName string, env []string, logger robot.Logger,
 func GetPluginConfig(taskPath, taskName string, env []string, logger robot.Logger) (*[]byte, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	ret, err := runScript(taskPath, taskName, env, logger, nil, []string{"configure"}, &stdout, &stderr)
+	ret, err := runScript(taskPath, taskName, env, logger, nil, []string{"_configure"}, &stdout, &stderr)
 	if err != nil {
 		return nil, err
 	}
 	if ret != robot.Normal {
-		return nil, fmt.Errorf("gsh configure for '%s' returned %s", taskName, ret)
+		return nil, fmt.Errorf("gsh _configure for '%s' returned %s", taskName, ret)
 	}
 	cfg := stdout.Bytes()
 	if len(bytes.TrimSpace(cfg)) == 0 {

@@ -118,7 +118,7 @@ type config struct {
 // Define the handler function
 func PluginHandler(r robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
 	// Create an empty map to unmarshal into
-	if command == "init" { // ignore init
+	if command == "_init" { // ignore _init
 		return
 	}
 	m := r.GetMessage()

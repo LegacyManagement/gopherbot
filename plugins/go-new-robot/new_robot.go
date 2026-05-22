@@ -11,7 +11,7 @@ func Configure() *[]byte {
 
 func PluginHandler(r robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
 	switch command {
-	case "init":
+	case "_init":
 		return
 	case newrobotflow.CommandStart, newrobotflow.CommandCancel:
 		newrobotflow.HandleStartCommand(r, command)

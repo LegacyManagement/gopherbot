@@ -26,11 +26,11 @@ command=$1
 shift
 
 case "$command" in
-	configure)
+	_configure)
 		default_config
 		exit 0
 		;;
-	init)
+	_init)
 		exit 0
 		;;
 esac

@@ -75,11 +75,11 @@ function handler(argv) {
   const showMemory = (v) => (v && v.length > 0 ? v : "<empty>");
 
   switch (cmd) {
-    case 'init':
+    case '_init':
       // Initialization logic if needed (usually not required for simple plugins)
       return task.Normal;
 
-    case 'configure':
+    case '_configure':
       // Return the default configuration
       return defaultConfig;
 

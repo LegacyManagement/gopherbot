@@ -13,10 +13,10 @@ command=$1
 shift
 
 case "$command" in
-	configure)
+	_configure)
 		default_config
 		;;
-	init)
+	_init)
 		exit 0
 		;;
 	hello)

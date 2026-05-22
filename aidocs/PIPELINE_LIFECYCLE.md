@@ -23,12 +23,18 @@ AI‑onboarding view: entrypoints, decision points, and data flow for message‑
 - Direct commands → `Commands`: `bot/dispatch.go:handleMessage`, `bot/dispatch.go:checkPluginMatchersAndRun`.
 - Ambient messages → `MessageMatchers`: `bot/dispatch.go:handleMessage`, `bot/dispatch.go:checkPluginMatchersAndRun`.
 - Job triggers / `run job`: `bot/dispatch.go:handleMessage`, `bot/jobrun.go:checkJobMatchersAndRun`.
-- Unmatched directed-command location diagnostics next: when no command/message/job matched, the engine may emit a first-class "wrong location" response if the text regex-matches exactly one plugin command that is available to the same user in a different channel or private context. This runs before catch-alls and suppresses hints for command-level authorization when user visibility cannot be determined confidently (for example, authorizers without `usergroups` support).
-- Catch‑alls (only when directly addressed and nothing matched): `bot/dispatch.go:handleMessage`.
+- Unmatched directed-command location diagnostics next: when no command/message/job matched, the engine may emit a first-class "wrong location" response if the text regex-matches exactly one plugin command that is available to the same user in a different channel or private context. This runs before catch-alls and suppresses hints for command-level authorization when user visibility cannot be determined confidently (for example, authorizers without `_usergroups` support).
+- Catch-alls (only when directly addressed and nothing matched): `bot/dispatch.go:handleMessage`; plugin code receives engine command `_catchall`.
 - Thread subscriptions last (`Subscribe`/`Unsubscribe`) keyed by `protocol/channel/thread`, with legacy fallback for restored pre-protocol keys: `bot/dispatch.go:handleMessage`, `bot/subscribe_thread.go`.
   - Subscribed delivery invokes the owning plugin with engine command `_subscribed` and the full incoming message as the first argument.
   - Subscription expiry invokes the owning plugin asynchronously with engine command `_expiresub`; `GOPHER_PROTOCOL`, `GOPHER_CHANNEL`, and `GOPHER_THREAD_ID` identify the expired subscription context.
   - Plugin-authored command names beginning with `_` are rejected during configuration because that namespace is reserved for engine lifecycle callbacks.
+
+Engine-owned plugin commands are `_configure`, `_init`, `_authorize`,
+`_usergroups`, `_elevate`, `_catchall`, `_subscribed`, and `_expiresub`.
+They are dispatcher/lifecycle command tokens, not user-configured matcher
+commands. Job `run` remains internal to job startup and is not passed to job
+handlers.
 
 Catch-all mode scoping:
 - Plugins may optionally set `CatchAllModes` to any subset of `alias`, `name`, `direct`, `hidden`.

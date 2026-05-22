@@ -341,15 +341,15 @@ end
 --------------------------------------------------------------------------------
 
 -- Gopherbot calls this script with arg[1] set to:
---   "init", "configure", or a user-defined command.
+--   "_init", "_configure", or a user-defined command.
 ---@type string
 local cmd = arg and arg[1] or ""
 
-if cmd == "init" then
+if cmd == "_init" then
   -- Perform any plugin initialization if needed.
   return task.Normal
 
-elseif cmd == "configure" then
+elseif cmd == "_configure" then
   -- Return our YAML config so Gopherbot can incorporate it.
   return defaultConfig
 

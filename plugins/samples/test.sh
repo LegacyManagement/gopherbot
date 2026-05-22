@@ -23,8 +23,8 @@ EOF
 }
 
 case "$command" in
-# NOTE: only "configure" should print anything to stdout
-	"configure")
+# NOTE: only "_configure" should print anything to stdout
+	"_configure")
 		configure
 		;;
 	"waitask")

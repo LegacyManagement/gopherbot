@@ -13,13 +13,13 @@ command=$1
 shift
 # END Boilerplate
 
-if [ "$command" == "configure" ]
+if [ "$command" == "_configure" ]
 then
     exit 0
 fi
 
 # Note that this plugin is only active when unconfigured and proto == terminal.
-if [ "$command" == "init" ]
+if [ "$command" == "_init" ]
 then
     Pause 1
     for REQUIRED in jq git ssh

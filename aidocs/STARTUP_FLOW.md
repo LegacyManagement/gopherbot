@@ -431,7 +431,7 @@ This mode is additive: connector startup and config merge ordering are unchanged
 
 Test harness note:
 
-- integration startup in `bot/start_t.go` waits for the current async plugin-init batch to quiesce before returning control to the harness, so startup `init` events do not bleed into the first assertion
+- integration startup in `bot/start_t.go` waits for the current async plugin-init batch to quiesce before returning control to the harness, so startup `_init` events do not bleed into the first assertion
 
 ### Template Functions
 
@@ -505,7 +505,7 @@ This updates in-memory runtime state and `GOPHER_CUSTOM_BRANCH`-family internal 
 
 **Go extensions (compiled)** are registered at init time and wired before startup: `main.go` calls `bot.ProcessRegistrations()` before `bot.Start()`, which consumes registrations collected via `robot/registrations.go` (funcs `RegisterPlugin`, `RegisterJob`, `RegisterTask`).
 
-**External extensions (scripts)** are discovered during config load: `conf/robot.yaml` defines `ExternalPlugins`, `ExternalJobs`, and `ExternalTasks` (see `bot/conf.go` fields), and `bot/taskconf.go` (func `addExternalTask`) converts them into runtime tasks during `loadConfig(true/false)`. Post-connect `loadConfig(false)` loads external plugin config (`configure`) and runs plugin init.
+**External extensions (scripts)** are discovered during config load: `conf/robot.yaml` defines `ExternalPlugins`, `ExternalJobs`, and `ExternalTasks` (see `bot/conf.go` fields), and `bot/taskconf.go` (func `addExternalTask`) converts them into runtime tasks during `loadConfig(true/false)`. Post-connect `loadConfig(false)` loads external plugin config (`_configure`) and runs plugin init (`_init`).
 
 Related map: `aidocs/EXTENSION_SURFACES.md`.
 
@@ -521,9 +521,9 @@ Related map: `aidocs/EXTENSION_SURFACES.md`.
 **Post-connect load** (`loadConfig(false)`):
 
 * Full configuration
-* External plugin configs loaded (calls `configure` command)
+* External plugin configs loaded (calls `_configure` command)
 * Scheduled jobs registered
-* Plugins initialized (calls `init` command)
+* Plugins initialized (calls `_init` command)
 
 ### Config Merge Order
 

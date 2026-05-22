@@ -7,6 +7,7 @@ Documentation here is meant for human consumption, as opposed to `aidocs/`, mean
 - `devdocs/testing.md` - how to run tests and what they cover
 - `devdocs/BasicMarkdown.md` - protocol-portable outgoing message contract
 - `devdocs/ai-chat.md` - AI chat plugin architecture, memory lifecycle, retention, and compaction design
+- `devdocs/engine-owned-plugin-commands.md` - engine-reserved plugin command namespace and callback inventory
 - root `UPGRADING-v3.md` - migration notes for existing robots moving to v3 multi-protocol behavior
 - `devdocs/new-robot-onboarding-epic.md` - planning slices and guardrails for the v3 onboarding epic
 - `devdocs/NewRobot.md` - target transcript for the redesigned single-flow `;new robot` onboarding experience

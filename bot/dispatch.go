@@ -403,7 +403,7 @@ func (w *worker) handleMessage() {
 					task, _, _ := getTask(specificCatchAll)
 					Log(robot.Debug, "Unmatched command, calling specific catchall '%s' on protocol '%s' in channel '%s'", task.name, incomingProtocol, w.Channel)
 					catchAllMatched = true
-					w.startPipeline(nil, specificCatchAll, catchAll, "catchall", w.fmsg)
+					w.startPipeline(nil, specificCatchAll, catchAll, "_catchall", w.fmsg)
 				} else if fallbackCatchAll != nil {
 					if multipleFallbackMatched {
 						Log(robot.Error, "More than one fallback catch-all matched, none will be called")
@@ -411,7 +411,7 @@ func (w *worker) handleMessage() {
 						task, _, _ := getTask(fallbackCatchAll)
 						Log(robot.Debug, "Unmatched command, calling fallback catchall '%s' on protocol '%s' in channel '%s'", task.name, incomingProtocol, w.Channel)
 						catchAllMatched = true
-						w.startPipeline(nil, fallbackCatchAll, catchAll, "catchall", w.fmsg)
+						w.startPipeline(nil, fallbackCatchAll, catchAll, "_catchall", w.fmsg)
 					}
 				} else {
 					Log(robot.Debug, "Unmatched command to robot and no catchall defined")

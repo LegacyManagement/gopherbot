@@ -12,10 +12,10 @@ DEFCONFIG
 command = ARGV.shift()
 
 case command
-when "configure"
+when "_configure"
   puts default_config
   exit 0
-when "init"
+when "_init"
   exit 0
 end
 

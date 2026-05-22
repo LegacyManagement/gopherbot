@@ -73,7 +73,7 @@ def probe(bot):
 
 
 command = sys.argv[1] if len(sys.argv) > 1 else ""
-if command == "configure":
+if command == "_configure":
     print(DEFAULT_CONFIG)
     sys.exit(0)
 

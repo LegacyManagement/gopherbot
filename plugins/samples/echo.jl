@@ -25,10 +25,10 @@ else
     command = ARGS[1]
     args = ARGS[2:end]
 
-    if command == "configure"
+    if command == "_configure"
         configure()
-        exit(0)  # Exit after handling configure
-    elseif command == "init"
+        exit(0)  # Exit after handling _configure
+    elseif command == "_init"
         exit(0)
     elseif command == "echo"
         if isempty(args)

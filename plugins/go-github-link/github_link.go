@@ -324,7 +324,7 @@ func githubSubjectID(raw interface{}) string {
 }
 
 func PluginHandler(r robot.Robot, command string, args ...string) robot.TaskRetVal {
-	if command == "init" {
+	if command == "_init" {
 		return robot.Normal
 	}
 	msg := r.GetMessage()

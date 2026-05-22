@@ -241,7 +241,7 @@ func Configure() *[]byte {
 
 func PluginHandler(r robot.Robot, command string, args ...string) robot.TaskRetVal {
 	switch command {
-	case "init":
+	case "_init":
 		return robot.Normal
 	case "debug":
 		return handleDebug(r)
@@ -257,7 +257,7 @@ func PluginHandler(r robot.Robot, command string, args ...string) robot.TaskRetV
 		return handleImage(r, args...)
 	case "_expiresub":
 		return handleExpiredSubscription(r)
-	case "ambient", "catchall", "_subscribed":
+	case "ambient", "_catchall", "_subscribed":
 		return handleConversationEntry(r, command, args...)
 	default:
 		return robot.Normal
@@ -273,7 +273,7 @@ func handleConversationEntry(r robot.Robot, command string, args ...string) robo
 	channel := ctx.Channel
 
 	// Preserve existing behavior where alias catchall routes to fallback/help style responses.
-	if command == "catchall" && cmdMode == "alias" {
+	if command == "_catchall" && cmdMode == "alias" {
 		if direct {
 			r.Say("Command not found; try your command in a channel, or use '%shelp'", botAlias)
 		} else {

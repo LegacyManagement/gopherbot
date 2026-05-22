@@ -45,13 +45,13 @@ function handler(argv) {
 
   switch (cmd) {
     // -------------------------------------------------------------------------
-    // init & configure
+    // _init & _configure
     // -------------------------------------------------------------------------
-    case 'init':
+    case '_init':
       // Initialization logic if needed
       return task.Normal;
 
-    case 'configure':
+    case '_configure':
       // Return the default YAML configuration
       return defaultConfig;
 

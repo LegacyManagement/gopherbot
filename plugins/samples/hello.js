@@ -18,11 +18,11 @@ function handler(argv) {
   const cmd = argv.length > 2 ? argv[2] : '';
 
   switch (cmd) {
-    case 'init':
+    case '_init':
       // Initialization logic if needed (usually not required for simple plugins)
       return task.Normal;
 
-    case 'configure':
+    case '_configure':
       // Return the default configuration
       return defaultConfig;
 

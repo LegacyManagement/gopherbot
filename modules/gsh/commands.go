@@ -300,7 +300,7 @@ func (c *shellContext) cmdCheckAdmin(ctx context.Context, args []string) error {
 		return usageError(ctx, "CheckAdmin does not take arguments")
 	}
 	if c.bot == nil {
-		return usageError(ctx, "CheckAdmin is unavailable during configure")
+		return usageError(ctx, "CheckAdmin is unavailable during _configure")
 	}
 	hc := interp.HandlerCtx(ctx)
 	value := c.bot.CheckAdmin()
@@ -1217,7 +1217,7 @@ func (c *shellContext) botWithMessageOptions(ctx context.Context, args []string,
 
 func (c *shellContext) botWithOptions(ctx context.Context, args []string, direct, threaded bool) (BotAPI, []string, error) {
 	if c.bot == nil {
-		return nil, nil, usageError(ctx, "robot methods are unavailable during configure")
+		return nil, nil, usageError(ctx, "robot methods are unavailable during _configure")
 	}
 	format, rest := parseFormatOption(args)
 	if format == nil {
@@ -1337,7 +1337,7 @@ func (c *shellContext) booleanRobotCommand(ctx context.Context, args []string, n
 		return usageError(ctx, name+" does not take arguments")
 	}
 	if c.bot == nil {
-		return usageError(ctx, name+" is unavailable during configure")
+		return usageError(ctx, name+" is unavailable during _configure")
 	}
 	value := fn()
 	fmt.Fprintln(interp.HandlerCtx(ctx).Stdout, strconv.FormatBool(value))

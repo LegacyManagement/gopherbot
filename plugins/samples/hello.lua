@@ -4,7 +4,7 @@
 -- A "Hello World" plugin for Gopherbot in Lua, using idiomatic Lua structures:
 --   - Local constants/variables for plugin config
 --   - A command dispatch table
---   - An "init/configure" pattern plus dispatch for other commands
+--   - An "_init/_configure" pattern plus dispatch for other commands
 --   - EmmyLua-style annotations for a better IDE experience
 --------------------------------------------------------------------------------
 
@@ -53,16 +53,16 @@ end
 --------------------------------------------------------------------------------
 
 -- Gopherbot calls this script with arg[1] set to a command like:
---   "init", "configure", or a user-defined command ("lua" in this case).
+--   "_init", "_configure", or a user-defined command ("lua" in this case).
 ---@type string
 local cmd = arg and arg[1] or ""
 
--- Handle init and configure first. If it’s not one of those, dispatch.
-if cmd == "init" then
+-- Handle _init and _configure first. If it’s not one of those, dispatch.
+if cmd == "_init" then
   -- Perform any plugin initialization (if needed).
   return task.Normal
 
-elseif cmd == "configure" then
+elseif cmd == "_configure" then
   -- Return our YAML config so Gopherbot can incorporate it.
   return defaultConfig
 

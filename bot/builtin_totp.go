@@ -96,7 +96,7 @@ func totp_elevate(gr robot.Robot, command string, args ...string) (retval robot.
 	w.Unlock()
 	m := r.GetMessage()
 	switch command {
-	case "init":
+	case "_init":
 		r.GetTaskConfig(&totpCfg)
 		for _, user := range totpCfg.Users {
 			totpUsers[user.User] = user.Secret
@@ -112,7 +112,7 @@ func totp_elevate(gr robot.Robot, command string, args ...string) (retval robot.
 		} else {
 			r.Say("Sorry, that's not a valid code")
 		}
-	case "elevate":
+	case "_elevate":
 		immediate := false
 		switch args[0] {
 		case "true", "True", "t", "T", "Yes", "yes", "Y":

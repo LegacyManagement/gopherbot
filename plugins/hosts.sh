@@ -53,7 +53,7 @@ hosts() {
 }
 
 case $command in
-	"configure")
+	"_configure")
 		configure
 		;;
 	"hosts")

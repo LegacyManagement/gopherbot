@@ -40,7 +40,7 @@ local sensitive_keys = {
 }
 
 local command = arg[1]
-if command == "configure" then
+if command == "_configure" then
   print(default_config)
   return task.Normal
 end

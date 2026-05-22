@@ -22,7 +22,7 @@ EOF
 }
 
 case "$COMMAND" in
-  "configure")
+  "_configure")
     configure
     ;;
   "format")

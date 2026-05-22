@@ -465,7 +465,7 @@ func (w *worker) runPipeline(stage pipeStage, ptype pipelineType, initialRun boo
 			eventEmitted = true
 			switch ptype {
 			case plugCommand:
-				if command != "init" {
+				if command != "_init" {
 					emit(CommandTaskRan)
 				}
 			case plugMessage:

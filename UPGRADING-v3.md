@@ -576,11 +576,32 @@ Built-in help commands are now metadata-driven:
 
 Built-in unmatched-command fallback now returns algorithmic closest matches using the same command metadata and ranking logic.
 
-## Authorizer `usergroups` Contract (Help Filtering)
+## Engine-Owned Plugin Commands
+
+The engine now permanently reserves plugin command names beginning with `_`.
+Plugin configuration is rejected if any configured `Commands` or
+`MessageMatchers` entry uses that prefix. Custom plugins should reserve `_`
+commands for engine callbacks and keep user-facing commands unprefixed.
+
+The standardized engine callback commands are:
+
+- `_configure`
+- `_init`
+- `_authorize`
+- `_usergroups`
+- `_elevate`
+- `_catchall`
+- `_subscribed`
+- `_expiresub`
+
+For jobs, the internal command name is still engine-only and is not passed to
+job handlers; job handlers receive only the job arguments.
+
+## Authorizer `_usergroups` Contract (Help Filtering)
 
 For group-aware help visibility, authorizer plugins can implement an optional:
 
-- `usergroups <username> <result_parameter>`
+- `_usergroups <username> <result_parameter>`
 
 Expected behavior:
 
@@ -590,8 +611,8 @@ Expected behavior:
 
 Help/fallback filtering behavior:
 
-- if `usergroups` returns usable groups, commands requiring auth are filtered by `AuthRequire`
-- if `usergroups` is not implemented, returns `NotFound`, or errors, help output is not group-filtered (no-filter fallback)
+- if `_usergroups` returns usable groups, commands requiring auth are filtered by `AuthRequire`
+- if `_usergroups` is not implemented, returns `NotFound`, or errors, help output is not group-filtered (no-filter fallback)
 
 ## Private Command Addressing
 

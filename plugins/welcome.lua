@@ -5,13 +5,13 @@ local bot = robot.Robot:new()
 
 local command = arg[1]
 
-if command == "configure" then
+if command == "_configure" then
     return ""  -- No default configuration
 end
 
 -- Welcome messaging for SSH now runs through the welcome-join trigger job.
--- Keep init quiet so startup doesn't emit chat lines before a user connects.
-if command == "init" then
+-- Keep _init quiet so startup doesn't emit chat lines before a user connects.
+if command == "_init" then
     return robot.task.Normal
 end
 

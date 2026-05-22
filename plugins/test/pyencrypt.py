@@ -17,10 +17,10 @@ if len(sys.argv) < 2:
 sys.argv.pop(0)
 command = sys.argv.pop(0)
 
-if command == "configure":
+if command == "_configure":
   print(default_config)
   sys.exit(0)
-if command == "init":
+if command == "_init":
   sys.exit(0)
 
 bot = Robot()

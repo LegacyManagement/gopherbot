@@ -8,7 +8,7 @@ import (
 	"github.com/dop251/goja"
 )
 
-// GetPluginConfig calls the given JS script with the argument "configure".
+// GetPluginConfig calls the given JS script with the argument "_configure".
 // We expect the script to return a YAML string that we convert to *[]byte.
 func GetPluginConfig(execPath, taskPath, taskName string, emptyBot map[string]string, libPaths []string) (*[]byte, error) {
 	vm := goja.New()
@@ -30,7 +30,7 @@ func GetPluginConfig(execPath, taskPath, taskName string, emptyBot map[string]st
 	firstBotObj := firstRobot.createBotObject()
 	vm.Set("GBOT", firstBotObj)
 
-	ctx.setProcessArgv(execPath, taskPath, "configure")
+	ctx.setProcessArgv(execPath, taskPath, "_configure")
 
 	scriptBytes, err := os.ReadFile(taskPath)
 	if err != nil {
@@ -53,7 +53,7 @@ func GetPluginConfig(execPath, taskPath, taskName string, emptyBot map[string]st
 	// Check if the return value is a string
 	cfgStr, ok := cfg.Export().(string)
 	if !ok {
-		return nil, fmt.Errorf("JavaScript plugin %s did not return a string for 'configure'", taskName)
+		return nil, fmt.Errorf("JavaScript plugin %s did not return a string for '_configure'", taskName)
 	}
 
 	cfgBytes := []byte(cfgStr)

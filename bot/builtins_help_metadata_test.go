@@ -589,7 +589,7 @@ func TestFallbackUsesBasicMarkdownOutputFormat(t *testing.T) {
 	}()
 
 	r := makeFormatTestRobot(t)
-	fallback(r, "catchall", "tell me a jok")
+	fallback(r, "_catchall", "tell me a jok")
 	if fake.lastFormat != robot.BasicMarkdown {
 		t.Fatalf("fallback() sent format %v, want %v", fake.lastFormat, robot.BasicMarkdown)
 	}

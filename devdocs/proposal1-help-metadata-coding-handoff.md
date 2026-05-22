@@ -90,7 +90,7 @@ Changes:
 No change:
 
 - Plugin availability filtering logic.
-- Group filtering via `usergroups`.
+- Group filtering via `_usergroups`.
 - Hidden command gating.
 - Help command interfaces: `help`, `commands`, `help-all`, fallback suggestions.
 
@@ -326,4 +326,3 @@ Proposal 1 is done when:
 3. Exact keyword lookup remains high-confidence.
 4. Help and fallback remain deterministic, fast, and readable.
 5. Migration and architecture docs are consistent with code.
-

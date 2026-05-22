@@ -67,7 +67,7 @@ func userInGroup(user string, cfgspec, memspec groupSpec) bool {
 // Define the handler function
 func groups(r robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
 	m := r.GetMessage()
-	if command == "init" { // ignore init
+	if command == "_init" { // ignore _init
 		return
 	}
 	var cfgspec, memspec groupSpec
@@ -84,15 +84,15 @@ func groups(r robot.Robot, command string, args ...string) (retval robot.TaskRet
 
 	updated := false
 
-	if command == "usergroups" {
+	if command == "_usergroups" {
 		if len(args) < 2 {
-			r.Log(robot.Error, "groups/usergroups requires <username> and <parameter-key>")
+			r.Log(robot.Error, "groups/_usergroups requires <username> and <parameter-key>")
 			return robot.ConfigurationError
 		}
 		user := strings.TrimSpace(args[0])
 		paramName := strings.TrimSpace(args[1])
 		if user == "" || paramName == "" {
-			r.Log(robot.Error, "groups/usergroups requires non-empty <username> and <parameter-key>")
+			r.Log(robot.Error, "groups/_usergroups requires non-empty <username> and <parameter-key>")
 			return robot.ConfigurationError
 		}
 
@@ -102,7 +102,7 @@ func groups(r robot.Robot, command string, args ...string) (retval robot.TaskRet
 			_, _, checkoutRet := r.CheckoutDatum(groupName, &dynamic, false)
 			if checkoutRet != robot.Ok {
 				// For help filtering, this is treated as an indeterminate lookup.
-				r.Log(robot.Warn, "groups/usergroups couldn't load dynamic group '%s': %s", groupName, checkoutRet)
+				r.Log(robot.Warn, "groups/_usergroups couldn't load dynamic group '%s': %s", groupName, checkoutRet)
 				return robot.NotFound
 			}
 			if userInGroup(user, cfg, dynamic) {
@@ -113,11 +113,11 @@ func groups(r robot.Robot, command string, args ...string) (retval robot.TaskRet
 
 		payload, err := json.Marshal(userGroups)
 		if err != nil {
-			r.Log(robot.Error, "groups/usergroups couldn't marshal group list: %s", err)
+			r.Log(robot.Error, "groups/_usergroups couldn't marshal group list: %s", err)
 			return robot.MechanismFail
 		}
 		if !r.SetParameter(paramName, string(payload)) {
-			r.Log(robot.Error, "groups/usergroups couldn't set result parameter '%s'", paramName)
+			r.Log(robot.Error, "groups/_usergroups couldn't set result parameter '%s'", paramName)
 			return robot.ConfigurationError
 		}
 		return robot.Success
@@ -125,7 +125,7 @@ func groups(r robot.Robot, command string, args ...string) (retval robot.TaskRet
 
 	// Get the group name from arguments
 	switch command {
-	case "add", "remove", "authorize":
+	case "add", "remove", "_authorize":
 		group = args[1]
 	case "empty", "show":
 		group = args[0]
@@ -136,7 +136,7 @@ func groups(r robot.Robot, command string, args ...string) (retval robot.TaskRet
 		// Validate the group
 		cfgspec, ok = groupCfg.Groups[group]
 		if !ok {
-			if command != "authorize" {
+			if command != "_authorize" {
 				r.Say("I don't have a \"%s\" group configured", group)
 				return
 			}
@@ -145,7 +145,7 @@ func groups(r robot.Robot, command string, args ...string) (retval robot.TaskRet
 		}
 	}
 
-	if command == "authorize" && len(group) == 0 {
+	if command == "_authorize" && len(group) == 0 {
 		r.Log(robot.Error, "Groups plugin requires a group name for authorization; plugin \"%s\" must set 'AuthRequire'", args[0])
 		return robot.ConfigurationError
 	}
@@ -157,7 +157,7 @@ func groups(r robot.Robot, command string, args ...string) (retval robot.TaskRet
 	case "help":
 		r.Say(strings.Replace(groupHelp, "\n", "", -1))
 		return
-	case "show", "authorize":
+	case "show", "_authorize":
 		// read-only cases
 		_, _, ret = r.CheckoutDatum(group, &memspec, false)
 	case "add", "remove", "empty":
@@ -273,7 +273,7 @@ func groups(r robot.Robot, command string, args ...string) (retval robot.TaskRet
 			return
 		}
 		r.Say("The %s group has the following members:\n%s", group, strings.Join(members, "\n"))
-	case "authorize":
+	case "_authorize":
 		if userInGroup(m.User, cfgspec, memspec) {
 			return robot.Success
 		}

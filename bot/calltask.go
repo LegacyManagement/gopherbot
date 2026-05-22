@@ -236,11 +236,11 @@ func getDefCfgThread(cchan chan<- getCfgReturn, ti interface{}) {
 		}
 		childTaskDir = absDir
 	}
-	Log(robot.Debug, "Calling '%s' with arg: configure (child runner)", taskPath)
+	Log(robot.Debug, "Calling '%s' with arg: _configure (child runner)", taskPath)
 	req := pipelineChildExecRequest{
 		TaskPath: taskPath,
 		Dir:      childTaskDir,
-		Args:     []string{"configure"},
+		Args:     []string{"_configure"},
 		Env:      configureEnv,
 		NullConn: true,
 	}
@@ -435,7 +435,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 		// parent process. Process-oriented privsep applies only to file-backed
 		// extensions that cross a child process boundary.
 		if isPlugin {
-			if command != "init" && !opts.suppressEmit {
+			if command != "_init" && !opts.suppressEmit {
 				emit(GoPluginRan)
 			}
 			Log(robot.Debug, "Calling go plugin: '%s' with args: %q", task.name, args)
@@ -526,7 +526,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 
 	if isExternalGoTask {
 		if isPlugin {
-			if command != "init" && !opts.suppressEmit {
+			if command != "_init" && !opts.suppressEmit {
 				emit(GoPluginRan)
 			}
 			ret, err := runGoPluginViaRPC(taskPath, task.name, env, task.Privileged, privileged, w, r, append([]string{command}, args...))
@@ -565,8 +565,8 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 
 	if isExternalLuaTask {
 		if isPlugin {
-			// "init" usually doesn't count as an actual plugin invocation for stats
-			if command != "init" && !opts.suppressEmit {
+			// "_init" usually doesn't count as an actual plugin invocation for stats
+			if command != "_init" && !opts.suppressEmit {
 				emit(ExternalTaskRan)
 			}
 			// Prepend the command to args, so Lua sees args[1] == <command>
@@ -609,8 +609,8 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 
 	if isExternalJSTask {
 		if isPlugin {
-			// "init" usually doesn't count as an actual plugin invocation for stats
-			if command != "init" && !opts.suppressEmit {
+			// "_init" usually doesn't count as an actual plugin invocation for stats
+			if command != "_init" && !opts.suppressEmit {
 				emit(ExternalTaskRan)
 			}
 			// Prepend the command to args, so JavaScript sees args[1] == <command>
@@ -653,7 +653,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 
 	if isExternalGSHTask {
 		if isPlugin {
-			if command != "init" && !opts.suppressEmit {
+			if command != "_init" && !opts.suppressEmit {
 				emit(ExternalTaskRan)
 			}
 			allArgs := append([]string{command}, args...)
@@ -800,7 +800,7 @@ func (w *worker) runExternalCommand(cmd *exec.Cmd, stdinPipe io.WriteCloser, eid
 		w.osCmd = nil
 		w.Unlock()
 	}()
-	if command != "init" && !opts.suppressEmit {
+	if command != "_init" && !opts.suppressEmit {
 		emit(ExternalTaskRan)
 	}
 	closed := make(chan struct{})

@@ -7,6 +7,15 @@ Primary sources:
 - External JSON API dispatch: `bot/http.go` (func `ServeHTTP` on type `handler`).
 - Language libraries: `lib/gopherbot_v1.lua`, `lib/gopherbot_v1.js`, `lib/gopherbot_v1.sh`, `lib/gopherbot_v2.py`, `lib/gopherbot_v1.rb`.
 
+Engine-owned plugin commands:
+- The engine reserves all command names beginning with `_` for lifecycle and
+  dispatcher callbacks. Plugin configuration must not define `Commands` or
+  `MessageMatchers` using that prefix.
+- Current callbacks are `_configure`, `_init`, `_authorize`, `_usergroups`,
+  `_elevate`, `_catchall`, `_subscribed`, and `_expiresub`.
+- Jobs are different: the internal `run` command is not passed to job handlers;
+  job handlers receive only their arguments.
+
 ## Canonical Robot interface (Go / Yaegi)
 
 The authoritative API surface for compiled Go and Yaegi-based extensions is the `robot.Robot` interface in `robot/robot.go`.

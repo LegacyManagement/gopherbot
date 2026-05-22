@@ -78,7 +78,7 @@ func userHasRequiredGroup(groups map[string]struct{}, required string) bool {
 
 // getAuthorizerUserGroups asks an authorizer for user group membership using:
 //
-//	usergroups <username> <parameter-key>
+//	_usergroups <username> <parameter-key>
 //
 // On Success, authorizers should call SetParameter(parameter-key, `["group1", ...]`).
 // Any non-success return is treated as indeterminate group membership.
@@ -107,7 +107,7 @@ func (r Robot) getAuthorizerUserGroups(w *worker, authorizer, user string) (grou
 	delete(c.parameters, paramKey)
 	w.Unlock()
 
-	_, authRet := w.callTaskWithOptions(taskCallOptions{suppressEmit: true}, authPlug, "usergroups", user, paramKey)
+	_, authRet := w.callTaskWithOptions(taskCallOptions{suppressEmit: true}, authPlug, "_usergroups", user, paramKey)
 	w.currentTask = r.currentTask
 	if authRet != robot.Success {
 		return nil, false
@@ -186,7 +186,7 @@ func (r Robot) checkAuthorization(w *worker, t interface{}, command string, args
 	_, authPlug, _ := getTask(authTask)
 	if authPlug != nil {
 		args = append([]string{task.name, task.AuthRequire, command}, args...)
-		_, authRet := w.callTask(authPlug, "authorize", args...)
+		_, authRet := w.callTask(authPlug, "_authorize", args...)
 		w.currentTask = r.currentTask
 		if authRet == robot.Success {
 			Log(robot.Audit, "Authorization succeeded by authorizer '%s' for user '%s' calling command '%s' for task '%s' in channel '%s'; AuthRequire: '%s'", authPlug.name, r.User, command, task.name, r.Channel, task.AuthRequire)

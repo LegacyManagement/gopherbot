@@ -77,6 +77,11 @@ Config key note: in v3 plugin config, directed command matchers must be under `C
 Directed `Commands` may use either `Regex` (raw Go regex) or `SimpleMatcher` (the simpler command DSL compiled to regex by the engine). `MessageMatchers` remain regex-only.
 SimpleMatcher captures arrive positionally: typed slots (`<name:type>`), required labelled capturing choices (`(label:...)` or `(:...)`), and optional labelled capturing groups (`[label:...]` or `[:...]`) become args; plain text, required synonyms (`/.../`), and optional noise (`{...}`) do not. The detailed contract lives in `devdocs/SimpleMatcher.md`; the engine diagnostic design lives in `aidocs/SIMPLE_MATCHER_DIAGNOSTICS.md`.
 
+Engine-owned plugin callbacks always use command names beginning with `_`.
+Configured plugin `Commands` and `MessageMatchers` must not use that prefix.
+Current engine callbacks include `_configure`, `_init`, `_authorize`,
+`_usergroups`, `_elevate`, `_catchall`, `_subscribed`, and `_expiresub`.
+
 ### Lua Plugins
 
 **Entry point:** Script is executed directly; check `arg[1]` for command.
@@ -87,7 +92,7 @@ local robot = require("gopherbot_v1")
 
 local command = arg[1]
 
-if command == "configure" then
+if command == "_configure" then
     -- MUST return a string (YAML config or empty "")
     return [[
 Commands:
@@ -96,7 +101,7 @@ Commands:
 ]]
 end
 
-if command == "init" then
+if command == "_init" then
     -- Initialization, return task code
     return robot.task.Normal
 end
@@ -112,9 +117,9 @@ return robot.task.Normal
 ```
 
 **Key points:**
-- `arg[1]` = command ("configure", "init", or user command)
+- `arg[1]` = command (`_configure`, `_init`, or user command)
 - `arg[2]`, `arg[3]`, ... = capture groups from either `Regex` or `SimpleMatcher`
-- `configure` **must return a string** (empty `""` if no config)
+- `_configure` **must return a string** (empty `""` if no config)
 - `GBOT` global provides the raw bot userdata
 - Use `robot.Robot:new()` to get a wrapped Robot instance
 
@@ -130,7 +135,7 @@ const robot = require('gopherbot_v1');
 
 const command = argv[1];
 
-if (command === "configure") {
+if (command === "_configure") {
     // Return YAML config string
     return `
 Commands:
@@ -139,7 +144,7 @@ Commands:
 `;
 }
 
-if (command === "init") {
+if (command === "_init") {
     return robot.Normal;
 }
 
@@ -155,7 +160,7 @@ return robot.Normal;
 **Key points:**
 - `argv[1]` = command
 - `argv[2]`, `argv[3]`, ... = regex capture groups
-- `configure` returns a string
+- `_configure` returns a string
 - `GBOT` global provides the raw bot object
 - Use `new robot.Robot()` for wrapped instance
 - Has HTTP client for external API calls (`robot.http`)
@@ -184,7 +189,7 @@ func Configure() *[]byte {
 
 func PluginHandler(r robot.Robot, command string, args ...string) robot.TaskRetVal {
     switch command {
-    case "init":
+    case "_init":
         // initialization
     case "example":
         r.Say("Hello from Go!")
@@ -223,7 +228,7 @@ command=$1
 shift
 
 case "$command" in
-  configure)
+  _configure)
     default_config
     ;;
   hello)
@@ -233,7 +238,7 @@ esac
 ```
 
 **Key points:**
-- `$1` is the command (`configure`, `init`, or the configured command name).
+- `$1` is the command (`_configure`, `_init`, or the configured command name).
 - Robot methods such as `say`, `Reply`, `PromptForReply`, `AddTask`, and `GetTaskConfig` are builtin shell commands, not HTTP wrappers.
 - Common shell utilities are also builtin (`cat`, `cp`, `find`, `grep`, `jq`, `ls`, `mktemp`, `mv`, `sort`, `tar`, `touch`, `tr`, `uniq`, `wc`, `xargs`, and more).
 - Command lookup is case-insensitive across Robot builtins, so `say` and `Say` are equivalent.
@@ -255,14 +260,14 @@ command=$1
 shift
 
 case "$command" in
-    "configure")
+    "_configure")
         cat << 'EOF'
 Commands:
 - Regex: '(?i:example)'
   Command: example
 EOF
         ;;
-    "init")
+    "_init")
         # initialization
         ;;
     "example")
@@ -283,13 +288,13 @@ from gopherbot_v2 import Robot
 bot = Robot()
 command = sys.argv[1]
 
-if command == "configure":
+if command == "_configure":
     print("""
 Commands:
 - Regex: '(?i:example)'
   Command: example
 """)
-elif command == "init":
+elif command == "_init":
     pass
 elif command == "example":
     bot.Say("Hello from Python!")
@@ -305,13 +310,13 @@ bot = Robot.new
 command = ARGV[0]
 
 case command
-when "configure"
+when "_configure"
     puts <<~EOF
 Commands:
 - Regex: '(?i:example)'
   Command: example
 EOF
-when "init"
+when "_init"
     # initialization
 when "example"
     bot.Say("Hello from Ruby!")
@@ -320,7 +325,7 @@ end
 
 **Key points:**
 - First argument (`$1`, `sys.argv[1]`, `ARGV[0]`) is command
-- `configure`: Print YAML to stdout, exit 0
+- `_configure`: Print YAML to stdout, exit 0
 - Library functions make HTTP calls to `$GOPHER_HTTP_POST/json`
 - `GOPHER_INSTALLDIR` points to gopherbot installation
 
@@ -346,7 +351,7 @@ Plus any parameters defined in the task configuration.
 
 ### Built-in Interpreters
 
-Configuration is loaded by calling the script with "configure" argument:
+Configuration is loaded by calling the script with `_configure` argument:
 - **Lua:** `modules/lua/get_config.go` - `GetPluginConfig()`
 - **JavaScript:** `modules/javascript/get_config.go` - `GetPluginConfig()`
 - **Yaegi:** Calls `Configure()` function directly
@@ -354,7 +359,7 @@ Configuration is loaded by calling the script with "configure" argument:
 ### External Scripts
 
 Configuration loaded by:
-1. Running script with "configure" as first argument
+1. Running script with `_configure` as first argument
 2. Capturing stdout
 3. Parsing as YAML
 
@@ -384,7 +389,7 @@ The goal is for all interpreters to provide the same Robot API. Current status:
 
 ### External Scripts
 - stderr goes to robot log with "ERR" prefix
-- stdout during "configure" is captured as config
+- stdout during `_configure` is captured as config
 - Use library Log functions for structured logging
 - Check `robot.log` for HTTP request/response debugging
 

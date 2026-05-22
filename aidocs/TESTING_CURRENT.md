@@ -62,6 +62,11 @@ Forward plan:
   directory for the invocation, then writes each suite under its own
   subdirectory inside that run directory. The runner prints the single
   "Results recorded in" path at the end.
+- `gopherbot-integration run-suite` prints a final "Summary report" after the
+  selected suite run completes. Each selected suite is listed as
+  `<SuiteName>: PASS` or `<SuiteName>: FAIL - <n> test(s) failed`.
+  The same report is also written to `FailSummary.out` in the run directory,
+  next to the suite artifact directories.
 - `gopherbot-integration run-suite` also accepts exact suite names, glob
   patterns such as `TestLuaFull*`, multiple selectors as separate CLI
   arguments, and comma-separated selector lists for MCP calls. Any selector

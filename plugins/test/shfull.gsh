@@ -391,10 +391,10 @@ command=$1
 shift
 
 case "$command" in
-	configure)
+	_configure)
 		default_config
 		;;
-	init)
+	_init)
 		exit 0
 		;;
 	sendmsg|configtest|subscribe|prompts|memoryseed|memorycheck|memorythreadcheck|memorydelete|memorythreaddelete|identity|parameteraddtask|utilities|defaulttasks|admincheck|elevatecheck|pipelineok|pipelinefail|spawnjob|pipeaddcmd|pipefinalcmd|pipefailcmd|secopen|secadmincmd|secauthz|secauthall|secelevated|secimmediate|sechiddenok|sechiddendenied|secadminonly|secusersonly|encryptsecret)

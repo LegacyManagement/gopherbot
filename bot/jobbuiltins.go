@@ -28,7 +28,7 @@ func init() {
 func jobcommands(m robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
 	r := m.(Robot)
 	tasks := r.tasks
-	if command == "init" {
+	if command == "_init" {
 		return
 	}
 	switch command {
@@ -97,7 +97,7 @@ func emailhistory(r Robot, user, address, spec string, run int) (retval robot.Ta
 }
 
 func jobhistory(m robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
-	if command == "init" {
+	if command == "_init" {
 		return
 	}
 	r := m.(Robot)

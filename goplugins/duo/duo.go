@@ -371,7 +371,7 @@ func configure(r robot.Robot, user string, res *authapi.PreauthResult) (retval r
 
 func duocommands(r robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
 	m := r.GetMessage()
-	if command != "elevate" && command != "duoconf" {
+	if command != "_elevate" && command != "duoconf" {
 		return
 	}
 	immediate := false

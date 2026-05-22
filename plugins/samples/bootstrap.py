@@ -20,7 +20,7 @@ bot = Robot()
 sys.argv.pop(0)
 
 command = sys.argv.pop(0)
-if command != "init":
+if command != "_init":
     exit(0)
 
 cfgdir = os.getenv("GOPHER_CONFIGDIR")

@@ -195,7 +195,7 @@ type Plugin struct {
 	Commands                  []InputMatcher `yaml:"Commands"`                  // Input matchers for messages that need to be directed to the bot
 	MessageMatchers           []InputMatcher `yaml:"MessageMatchers"`           // Input matchers for messages the bot hears even when it’s not being spoken to
 	AmbientMatchCommand       bool           `yaml:"AmbientMatchCommand"`       // Whether message matchers should also match when isCommand is true
-	CatchAll                  bool           `yaml:"CatchAll"`                  // Plugins with CatchAll=true get called with command="catchall" and argument=<full message text to robot>
+	CatchAll                  bool           `yaml:"CatchAll"`                  // Plugins with CatchAll=true get called with command="_catchall" and argument=<full message text to robot>
 	CatchAllModes             []string       `yaml:"CatchAllModes"`             // Optional command modes for catchall matching: alias, name, direct, hidden
 	MatchUnlisted             bool           `yaml:"MatchUnlisted"`             // Set to true if ambient message matches should be checked for users not listed in the UserRoster
 	*Task                     `yaml:",inline"`
@@ -208,7 +208,7 @@ var taskHandlers = make(map[string]robot.TaskHandler)
 // stopRegistrations is set "true" when the bot is created to prevent registration outside of init functions
 var stopRegistrations = false
 
-// initialize sends the "init" command to every plugin
+// initialize sends the "_init" command to every plugin
 func initializePlugins() {
 	currentCfg.RLock()
 	cfg := currentCfg.configuration
@@ -243,7 +243,7 @@ func initializePlugins() {
 			batch.add()
 			go func(w *worker, t interface{}) {
 				defer batch.complete()
-				w.startPipeline(nil, t, plugCommand, "init")
+				w.startPipeline(nil, t, plugCommand, "_init")
 			}(w, t)
 		}
 		batch.seal()

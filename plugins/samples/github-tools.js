@@ -135,9 +135,9 @@ function runWorkflow(bot, cfg, repo, workflow, ref) {
 function handler(argv) {
   const cmd = argv.length > 2 ? argv[2] : '';
   switch (cmd) {
-    case 'init':
+    case '_init':
       return task.Normal;
-    case 'configure':
+    case '_configure':
       return defaultConfig;
     case 'review-requests':
       return listReviewRequests(new Robot(), loadConfig(new Robot()));

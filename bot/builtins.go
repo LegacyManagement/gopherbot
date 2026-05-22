@@ -40,10 +40,10 @@ func defaultHelp() []string {
 
 func fallback(m robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
 	r := m.(Robot)
-	if command == "init" {
-		return // ignore init
+	if command == "_init" {
+		return // ignore _init
 	}
-	if command == "catchall" {
+	if command == "_catchall" {
 		term := ""
 		if len(args) > 0 {
 			term = strings.TrimSpace(args[0])
@@ -1415,8 +1415,8 @@ func (r Robot) renderExactHelpEntry(entry helpCommandMetadata, siblingCount int)
 
 func help(m robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
 	r := m.(Robot)
-	if command == "init" {
-		return // ignore init
+	if command == "_init" {
+		return // ignore _init
 	}
 	if command == "info" {
 		admins := strings.Join(r.cfg.adminUsers, ", ")
@@ -1714,7 +1714,7 @@ var rightback = []string{
 func logging(m robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
 	r := m.(Robot)
 	switch command {
-	case "init":
+	case "_init":
 		return
 	case "level":
 		setLogLevel(logStrToLevel(args[0]))
@@ -1911,8 +1911,8 @@ func formatReloadOutcome(r Robot, reloadErr error) string {
 }
 
 func admin(m robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
-	if command == "init" {
-		return // ignore init
+	if command == "_init" {
+		return // ignore _init
 	}
 	r := m.(Robot)
 	w := getLockedWorker(r.tid)

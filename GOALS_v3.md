@@ -156,11 +156,11 @@ Help and discovery mechanisms should be group-aware and provide clear, contextua
 * Robot startup should use more than a simple author-provided keyword list; we'll need to come up with a new design
 * When users ask for help, they should only be shown commands which they are able to run
 * Stretch direction: help output should be generated from command-linked help metadata (rather than loose text blocks), so help content and executable commands stay naturally aligned
-* Stretch direction: extend the authorizer plugin contract with a `usergroups` command (for example `usergroups david`) that returns a JSON array of groups for that user; help rendering can then filter command visibility to only commands available to that user
+* Stretch direction: extend the authorizer plugin contract with a `_usergroups` command (for example `_usergroups david`) that returns a JSON array of groups for that user; help rendering can then filter command visibility to only commands available to that user
 
 Status: Help System: DONE ENOUGH for v3; groups update remains NOT STARTED /
 NON-BLOCKING. Help and fallback behavior are metadata-driven and group-aware
-when an authorizer implements the optional `usergroups` contract. A richer
+when an authorizer implements the optional `_usergroups` contract. A richer
 first-class groups subsystem remains future work.
 
 #### Integrate new SimpleMatcher with Help System

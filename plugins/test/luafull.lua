@@ -482,9 +482,9 @@ end
 
 local cmd = arg and arg[1] or ""
 
-if cmd == "init" then
+if cmd == "_init" then
   return task.Normal
-elseif cmd == "configure" then
+elseif cmd == "_configure" then
   return defaultConfig
 else
   local bot = Robot:new()

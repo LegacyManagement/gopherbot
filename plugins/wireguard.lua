@@ -6,7 +6,7 @@ local log = gopherbot.log
 
 local command = arg[1]
 
-if command == "configure" then
+if command == "_configure" then
   return "---\nCommands: []"
 end
 
@@ -641,7 +641,7 @@ if not state then
   return task.Fail
 end
 
-if command == "init" then
+if command == "_init" then
   apply_wireguard(cfg, state)
 elseif command == "add-device" then
   add_device(cfg, state, arg[2], arg[3])

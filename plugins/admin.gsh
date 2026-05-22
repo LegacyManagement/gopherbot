@@ -6,7 +6,7 @@ command=$1
 shift
 
 case "$command" in
-	configure|init)
+	_configure|_init)
 		exit 0
 		;;
 esac

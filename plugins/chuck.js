@@ -55,7 +55,7 @@ function handler(argv) {
   const cmd = argv.length > 2 ? argv[2] : "";
 
   switch (cmd) {
-    case "configure":
+    case "_configure":
       return defaultConfig;
     case "chuck":
       handleChuck(new Robot());

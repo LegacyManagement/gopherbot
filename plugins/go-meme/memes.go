@@ -29,12 +29,12 @@ func PluginHandler(r robot.Robot, command string, args ...string) (retval robot.
 		m.Password = r.GetParameter("PASSWORD")
 	}
 	if len(m.Username) == 0 || len(m.Password) == 0 {
-		if command != "init" {
+		if command != "_init" {
 			r.Reply("I couldn't remember my username or password for the meme generator")
 		}
 	}
 	switch command {
-	case "init":
+	case "_init":
 		// ignore
 	default:
 		var top, bottom string

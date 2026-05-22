@@ -16,7 +16,7 @@ Commands:
 executable = sys.argv.pop(0)
 command = sys.argv.pop(0)
 
-if command == "configure":
+if command == "_configure":
     print(default_config)
 
 if command == "format":

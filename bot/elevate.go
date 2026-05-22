@@ -5,7 +5,7 @@ import "github.com/lnxjedi/gopherbot/robot"
 const technicalElevError = "Sorry, elevation failed due to a problem with the elevation service"
 const configElevError = "Sorry, elevation failed due to a configuration error"
 
-// Elevator plugins provide an elevate method for checking if the user
+// Elevator plugins provide an _elevate method for checking if the user
 // can run a privileged command.
 
 func (r Robot) elevate(task *Task, immediate bool) (retval robot.TaskRetVal) {
@@ -28,7 +28,7 @@ func (r Robot) elevate(task *Task, immediate bool) (retval robot.TaskRetVal) {
 		}
 		w := getLockedWorker(r.tid)
 		w.Unlock()
-		_, elevRet := w.callTask(ePlug, "elevate", immedString)
+		_, elevRet := w.callTask(ePlug, "_elevate", immedString)
 		elevated := elevRet == robot.Success
 		w.Lock()
 		w.elevated = elevated

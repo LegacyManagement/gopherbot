@@ -71,7 +71,7 @@ end
 
 local cmd = arg and arg[1] or ""
 
-if cmd == "configure" then
+if cmd == "_configure" then
   return defaultConfig
 elseif cmd == "chuck" then
   local bot = Robot:new()

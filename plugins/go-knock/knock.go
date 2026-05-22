@@ -49,7 +49,7 @@ type JokeConfig struct {
 func PluginHandler(r robot.Robot, command string, args ...string) (retval robot.TaskRetVal) {
 	var j JokeConfig // get access to a copy of the plugin's config
 	switch command {
-	case "init":
+	case "_init":
 		// Ignore, this plugin has no start-up
 	case "knock":
 		if ret := r.GetTaskConfig(&j); ret != robot.Ok {

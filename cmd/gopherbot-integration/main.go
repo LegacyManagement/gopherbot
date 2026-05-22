@@ -31,6 +31,8 @@ import (
 var Version = "(no version set)"
 var Commit = "(not set)"
 
+const suiteSummaryFile = "FailSummary.out"
+
 type suiteResult struct {
 	Suite      string           `json:"suite"`
 	Status     string           `json:"status"`
@@ -48,6 +50,12 @@ type suiteResult struct {
 type runOutcome struct {
 	result suiteResult
 	err    error
+}
+
+type suiteReportEntry struct {
+	Suite        string
+	FailureCount int
+	RunError     string
 }
 
 func main() {
@@ -151,6 +159,7 @@ Flags:
   -case-timeout DURATION
                       Per-test timeout before dumping goroutines and exiting hard (default 14s).
   -live              Print scripted interaction while running (default true).
+  -summary           Print final summary report (default true).
 `)
 }
 
@@ -203,6 +212,7 @@ func runSuiteCommand(args []string) int {
 	timeout := fs.Duration("timeout", 2*time.Minute, "per-suite timeout")
 	caseTimeout := fs.Duration("case-timeout", suites.DefaultCaseTimeout, "per-test timeout")
 	runID := fs.String("run-id", "", "shared run identifier for grouped suite artifacts")
+	summary := fs.Bool("summary", true, "print final summary report")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -234,11 +244,22 @@ func runSuiteCommand(args []string) int {
 	}
 	suite := selected[0]
 	outcome := runOneSuite(root, absOutputRoot, suite, *live, *timeout, *caseTimeout, *runID)
+	report := []suiteReportEntry{suiteReportEntryFromOutcome(suite.Name, outcome)}
+	if err := writeSuiteReportFile(filepath.Join(filepath.Dir(outcome.result.OutputDir), suiteSummaryFile), report); err != nil {
+		fmt.Fprintf(os.Stderr, "writing suite summary: %v\n", err)
+		return 1
+	}
 	if outcome.err != nil {
 		fmt.Fprintf(os.Stderr, "suite %s failed to run: %v\n", suite.Name, outcome.err)
+		if *summary {
+			printSuiteReport(os.Stdout, report)
+		}
 		return 1
 	}
 	printSuiteSummary(outcome.result)
+	if *summary {
+		printSuiteReport(os.Stdout, report)
+	}
 	if len(outcome.result.Failures) > 0 {
 		return 1
 	}
@@ -430,6 +451,7 @@ func runSuites(outputRoot string, selected []suites.Suite, live bool, timeout, c
 	}
 	runRoot := filepath.Join(outputRoot, runID)
 	code := 0
+	report := make([]suiteReportEntry, 0, len(selected))
 	for _, suite := range selected {
 		cmdArgs := []string{
 			"run-suite",
@@ -437,6 +459,7 @@ func runSuites(outputRoot string, selected []suites.Suite, live bool, timeout, c
 			"-run-id", runID,
 			"-timeout", timeout.String(),
 			"-case-timeout", caseTimeout.String(),
+			"-summary=false",
 		}
 		if !live {
 			cmdArgs = append(cmdArgs, "-live=false")
@@ -445,11 +468,28 @@ func runSuites(outputRoot string, selected []suites.Suite, live bool, timeout, c
 		cmd := exec.Command(os.Args[0], cmdArgs...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		runErr := cmd.Run()
+		if runErr != nil {
 			code = 1
 		}
+		result, readErr := readSuiteResult(filepath.Join(runRoot, safeName(suite.Name), "result.json"))
+		if readErr != nil {
+			if runErr != nil {
+				report = append(report, suiteReportEntry{Suite: suite.Name, RunError: fmt.Sprintf("%v; result.json: %v", runErr, readErr)})
+			} else {
+				report = append(report, suiteReportEntry{Suite: suite.Name, RunError: fmt.Sprintf("result.json: %v", readErr)})
+			}
+			code = 1
+			continue
+		}
+		report = append(report, suiteReportEntryFromResult(suite.Name, result, runErr))
 	}
 	fmt.Printf("Results recorded in: %s\n", runRoot)
+	if err := writeSuiteReportFile(filepath.Join(runRoot, suiteSummaryFile), report); err != nil {
+		fmt.Fprintf(os.Stderr, "writing suite summary: %v\n", err)
+		return 1
+	}
+	printSuiteReport(os.Stdout, report)
 	return code
 }
 
@@ -882,6 +922,18 @@ func writeResult(path string, result suiteResult) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+func readSuiteResult(path string) (suiteResult, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return suiteResult{}, err
+	}
+	var result suiteResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return suiteResult{}, err
+	}
+	return result, nil
+}
+
 func printSuiteSummary(result suiteResult) {
 	if len(result.Failures) == 0 {
 		fmt.Printf("PASS %s\n", result.Suite)
@@ -892,4 +944,62 @@ func printSuiteSummary(result suiteResult) {
 		}
 	}
 	fmt.Printf("Artifacts written to: %s\n", result.OutputDir)
+}
+
+func suiteReportEntryFromOutcome(defaultSuite string, outcome runOutcome) suiteReportEntry {
+	return suiteReportEntryFromResult(defaultSuite, outcome.result, outcome.err)
+}
+
+func suiteReportEntryFromResult(defaultSuite string, result suiteResult, runErr error) suiteReportEntry {
+	suiteName := result.Suite
+	if suiteName == "" {
+		suiteName = defaultSuite
+	}
+	entry := suiteReportEntry{
+		Suite:        suiteName,
+		FailureCount: len(result.Failures),
+	}
+	if runErr != nil && entry.FailureCount == 0 {
+		entry.RunError = runErr.Error()
+	}
+	if result.Status != "" && result.Status != "passed" && entry.FailureCount == 0 && entry.RunError == "" {
+		entry.RunError = result.Status
+	}
+	return entry
+}
+
+func printSuiteReport(out io.Writer, entries []suiteReportEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "Summary report:")
+	for _, entry := range entries {
+		fmt.Fprintln(out, formatSuiteReportLine(entry))
+	}
+}
+
+func writeSuiteReportFile(path string, entries []suiteReportEntry) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	printSuiteReport(f, entries)
+	return nil
+}
+
+func formatSuiteReportLine(entry suiteReportEntry) string {
+	if entry.FailureCount == 0 && entry.RunError == "" {
+		return fmt.Sprintf("%s: PASS", entry.Suite)
+	}
+	if entry.FailureCount > 0 {
+		return fmt.Sprintf("%s: FAIL - %d test(s) failed", entry.Suite, entry.FailureCount)
+	}
+	if entry.RunError != "" {
+		return fmt.Sprintf("%s: FAIL - %s", entry.Suite, entry.RunError)
+	}
+	return fmt.Sprintf("%s: FAIL", entry.Suite)
 }

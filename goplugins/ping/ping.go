@@ -38,7 +38,7 @@ func ping(m robot.Robot, command string, args ...string) (retval robot.TaskRetVa
 	// The plugin can handle multiple different commands
 	switch command {
 	// This isn't really necessary
-	case "init":
+	case "_init":
 		// ignore
 	case "rules":
 		m.Say(rules)
