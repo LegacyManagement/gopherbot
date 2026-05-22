@@ -15,7 +15,6 @@ import (
 var privSep bool
 
 var privUID, unprivUID int
-var privGID int
 
 func panicIfDarwinSetuidBinaryTampered(unprivUID int) {
 	target, err := setuidExecutableTargetForCurrentPrivsep()
@@ -55,11 +54,9 @@ func switchPrivsepEffectiveUID(uid int) error {
 func init() {
 	uid := syscall.Getuid()
 	euid := syscall.Geteuid()
-	gid := syscall.Getgid()
 	if uid != euid {
 		privUID = uid
 		unprivUID = euid
-		privGID = gid
 		panicIfDarwinSetuidBinaryTampered(unprivUID)
 		syscall.Umask(0027)
 
@@ -113,22 +110,15 @@ func commitPrivsepChildRole(role privsepChildRole) error {
 }
 
 func currentPrivsepIdentityReport() (privsepIdentityReport, error) {
-	groups, err := syscall.Getgroups()
-	if err != nil {
-		return privsepIdentityReport{}, err
-	}
 	return privsepIdentityReport{
-		UID:    syscall.Getuid(),
-		EUID:   syscall.Geteuid(),
-		GID:    syscall.Getgid(),
-		EGID:   syscall.Getegid(),
-		Groups: groups,
+		UID:  syscall.Getuid(),
+		EUID: syscall.Geteuid(),
 	}, nil
 }
 
 func checkprivsep() {
 	if privSep {
-		Log(robot.Info, "PRIVSEP - UID-only privilege separation initialized; daemon UID/GID %d/%d, unprivileged UID %d with inherited GID %d; r/euid: %d/%d", privUID, privGID, unprivUID, privGID, syscall.Getuid(), syscall.Geteuid())
+		Log(robot.Info, "PRIVSEP - UID-only privilege separation initialized; daemon UID %d, unprivileged UID %d; r/euid: %d/%d", privUID, unprivUID, syscall.Getuid(), syscall.Geteuid())
 	} else {
 		Log(robot.Info, "PRIVSEP - Privilege separation not in use")
 	}

@@ -18,7 +18,6 @@ import (
 var privSep bool
 
 var privUID, unprivUID int
-var privGID int
 
 /* NOTE on privsep and setuid gopherbot:
 Gopherbot "flips" the traditional sense of setuid; gopherbot is normally run
@@ -39,26 +38,22 @@ robot privileges should be granted by UID, not by group membership.
 
 */
 
-func nobodyAccountIDs() (int, int, error) {
+func lookupNobodyUID() (int, error) {
 	nobody, err := user.Lookup("nobody")
 	if err != nil {
-		return -1, -1, err
+		return -1, err
 	}
 	uid, err := strconv.Atoi(nobody.Uid)
 	if err != nil {
-		return -1, -1, err
+		return -1, err
 	}
-	gid, err := strconv.Atoi(nobody.Gid)
-	if err != nil {
-		return -1, -1, err
-	}
-	return uid, gid, nil
+	return uid, nil
 }
 
 func panicIfSetuidBinaryTampered(unprivUID int) {
-	nobodyUID, nobodyGID, err := nobodyAccountIDs()
+	nobodyUID, err := lookupNobodyUID()
 	if err != nil {
-		panic("binary could be tampered! unable to resolve nobody uid/gid")
+		panic("binary could be tampered! unable to resolve nobody uid")
 	}
 	if unprivUID != nobodyUID {
 		return
@@ -91,9 +86,6 @@ func panicIfSetuidBinaryTampered(unprivUID int) {
 	if int(st.Uid) != nobodyUID {
 		panic(fmt.Sprintf("binary could be tampered! setuid executable owner mismatch for %s: got uid %d, want nobody uid %d", execPath, st.Uid, nobodyUID))
 	}
-	if int(st.Gid) != nobodyGID {
-		logPrivsepInitDiagnostic("PRIVSEP - setuid executable group is %d, not nobody gid %d; UID-only privsep leaves GID unchanged", st.Gid, nobodyGID)
-	}
 }
 
 func switchPrivsepEffectiveUID(uid int) error {
@@ -103,11 +95,9 @@ func switchPrivsepEffectiveUID(uid int) error {
 func init() {
 	uid := unix.Getuid()
 	euid := unix.Geteuid()
-	gid := unix.Getgid()
 	if uid != euid {
 		privUID = uid
 		unprivUID = euid
-		privGID = gid
 		panicIfSetuidBinaryTampered(unprivUID)
 		unix.Umask(0027)
 
@@ -166,16 +156,9 @@ func commitPrivsepChildRole(role privsepChildRole) error {
 }
 
 func currentPrivsepIdentityReport() (privsepIdentityReport, error) {
-	groups, err := syscall.Getgroups()
-	if err != nil {
-		return privsepIdentityReport{}, err
-	}
 	return privsepIdentityReport{
-		UID:    unix.Getuid(),
-		EUID:   unix.Geteuid(),
-		GID:    unix.Getgid(),
-		EGID:   unix.Getegid(),
-		Groups: groups,
+		UID:  unix.Getuid(),
+		EUID: unix.Geteuid(),
 	}, nil
 }
 
@@ -187,7 +170,7 @@ func checkprivsep() {
 		ruid := unix.Getuid()
 		euid := unix.Geteuid()
 		tid := unix.Gettid()
-		Log(robot.Info, "PRIVSEP - UID-only privilege separation initialized; daemon UID/GID %d/%d, unprivileged UID %d with inherited GID %d; thread %d r/euid: %d/%d", privUID, privGID, unprivUID, privGID, tid, ruid, euid)
+		Log(robot.Info, "PRIVSEP - UID-only privilege separation initialized; daemon UID %d, unprivileged UID %d; thread %d r/euid: %d/%d", privUID, unprivUID, tid, ruid, euid)
 	} else {
 		Log(robot.Info, "PRIVSEP - Privilege separation not in use")
 	}

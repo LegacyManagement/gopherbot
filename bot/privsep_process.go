@@ -22,11 +22,8 @@ const (
 type privsepChildRole string
 
 type privsepIdentityReport struct {
-	UID    int   `json:"uid"`
-	EUID   int   `json:"euid"`
-	GID    int   `json:"gid"`
-	EGID   int   `json:"egid"`
-	Groups []int `json:"groups"`
+	UID  int `json:"uid"`
+	EUID int `json:"euid"`
 }
 
 type setuidExecutableTarget struct {
@@ -214,9 +211,6 @@ func verifyUnprivilegedExecutableReachability(userName, execPath string) error {
 func validatePrivsepIdentityReport(report privsepIdentityReport) error {
 	if report.UID != unprivUID || report.EUID != unprivUID {
 		return fmt.Errorf("privsep self-check unprivileged child UID mismatch: uid/euid %d/%d, want %d/%d", report.UID, report.EUID, unprivUID, unprivUID)
-	}
-	if report.GID != privGID || report.EGID != privGID {
-		return fmt.Errorf("privsep self-check child GID changed: gid/egid %d/%d, want inherited robot gid %d/%d", report.GID, report.EGID, privGID, privGID)
 	}
 	return nil
 }

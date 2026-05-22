@@ -7,7 +7,6 @@ import "github.com/lnxjedi/gopherbot/robot"
 // privSep is always disabled on platforms without privilege separation support.
 var privSep bool
 var privUID, unprivUID int
-var privGID int
 
 func commitPrivsepChildRole(role privsepChildRole) error {
 	return nil

@@ -13,21 +13,12 @@ import (
 
 func TestValidatePrivsepIdentityReportAcceptsUIDOnlyRole(t *testing.T) {
 	oldUnprivUID := unprivUID
-	oldPrivGID := privGID
 	t.Cleanup(func() {
 		unprivUID = oldUnprivUID
-		privGID = oldPrivGID
 	})
 	unprivUID = 65534
-	privGID = 1000
 
-	report := privsepIdentityReport{
-		UID:    65534,
-		EUID:   65534,
-		GID:    1000,
-		EGID:   1000,
-		Groups: []int{1000, 2000},
-	}
+	report := privsepIdentityReport{UID: 65534, EUID: 65534}
 	if err := validatePrivsepIdentityReport(report); err != nil {
 		t.Fatalf("validatePrivsepIdentityReport() error = %v", err)
 	}
@@ -35,33 +26,14 @@ func TestValidatePrivsepIdentityReportAcceptsUIDOnlyRole(t *testing.T) {
 
 func TestValidatePrivsepIdentityReportRejectsUIDMismatch(t *testing.T) {
 	oldUnprivUID := unprivUID
-	oldPrivGID := privGID
 	t.Cleanup(func() {
 		unprivUID = oldUnprivUID
-		privGID = oldPrivGID
 	})
 	unprivUID = 65534
-	privGID = 1000
 
-	report := privsepIdentityReport{UID: 1000, EUID: 65534, GID: 1000, EGID: 1000}
+	report := privsepIdentityReport{UID: 1000, EUID: 65534}
 	if err := validatePrivsepIdentityReport(report); err == nil {
 		t.Fatal("validatePrivsepIdentityReport() error = nil, want UID mismatch")
-	}
-}
-
-func TestValidatePrivsepIdentityReportRejectsGIDChange(t *testing.T) {
-	oldUnprivUID := unprivUID
-	oldPrivGID := privGID
-	t.Cleanup(func() {
-		unprivUID = oldUnprivUID
-		privGID = oldPrivGID
-	})
-	unprivUID = 65534
-	privGID = 1000
-
-	report := privsepIdentityReport{UID: 65534, EUID: 65534, GID: 65534, EGID: 65534}
-	if err := validatePrivsepIdentityReport(report); err == nil {
-		t.Fatal("validatePrivsepIdentityReport() error = nil, want inherited GID mismatch")
 	}
 }
 
