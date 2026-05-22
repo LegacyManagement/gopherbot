@@ -31,3 +31,4 @@ binary-encrypted-key*
 !/tmp/.gitkeep
 # Created by Yaegi init for the gopath
 .yaegi-gopath/
+.antigravitycli
