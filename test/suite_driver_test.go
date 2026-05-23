@@ -65,33 +65,20 @@ func (d *inProcessSuiteDriver) Send(ctx context.Context, msg suites.Message) err
 }
 
 func (d *inProcessSuiteDriver) Receive(ctx context.Context, want suites.ExpectedMessage) (suites.Message, error) {
-	type receiveResult struct {
-		msg *testc.TestMessage
-		err error
+	msg, err := d.conn.GetBotMessageContext(ctx)
+	if err != nil {
+		return suites.Message{}, err
 	}
-	rc := make(chan receiveResult, 1)
-	go func() {
-		msg, err := d.conn.GetBotMessage()
-		rc <- receiveResult{msg: msg, err: err}
-	}()
-	select {
-	case <-ctx.Done():
-		return suites.Message{}, ctx.Err()
-	case res := <-rc:
-		if res.err != nil {
-			return suites.Message{}, res.err
-		}
-		if res.msg == nil {
-			return suites.Message{}, fmt.Errorf("nil bot message")
-		}
-		return suites.Message{
-			User:     res.msg.User,
-			Channel:  res.msg.Channel,
-			Text:     res.msg.Message,
-			Threaded: res.msg.Threaded,
-			Hidden:   res.msg.Hidden,
-		}, nil
+	if msg == nil {
+		return suites.Message{}, fmt.Errorf("nil bot message")
 	}
+	return suites.Message{
+		User:     msg.User,
+		Channel:  msg.Channel,
+		Text:     msg.Message,
+		Threaded: msg.Threaded,
+		Hidden:   msg.Hidden,
+	}, nil
 }
 
 func runRegisteredSuite(t *testing.T, conn *testc.TestConnector, suite suites.Suite) {

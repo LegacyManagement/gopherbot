@@ -28,7 +28,6 @@ case "$command" in
 		configure
 		;;
 	"waitask")
-		(sleep 3; Say "ok - answer puppies") &
 		sleep 2
 		# The 'bot will have to wait to hear back about kittens
 		REPLY=$(PromptForReply YesNo "Do you like kittens?")

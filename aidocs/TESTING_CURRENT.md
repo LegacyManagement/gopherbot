@@ -49,7 +49,10 @@ Forward plan:
   `-case-timeout` (default `14s`). If a case or YAML flow step exceeds that
   deadline, the suite writes `goroutines.txt`, marks the failed step with
   `timed_out: true` in `result.json`, and exits the suite process hard so the
-  goroutine state reflects the hang.
+  goroutine state reflects the hang. The scripted test connector receive path
+  honors this same case context; suite data should choose appropriate flow
+  steps and case timeouts rather than relying on connector-local receive
+  timeouts.
 - After scripted cases complete, the runner sends the normal admin `bender quit`
   command in `#general`. If the robot does not exit within the same
   `-case-timeout`, the runner writes `goroutines.txt`, records a `shutdown`
@@ -187,7 +190,9 @@ Notes:
     pipeline/admin flows.
   - `pause` accepts Go duration strings such as `150ms`.
 - YAML `flow` suites cover multi-step interactions that need captures or
-  interleaving, such as validation codes and admin pipeline log inspection.
+  interleaving, such as validation codes, admin pipeline log inspection, and
+  prompt contention where multiple plugin prompts overlap for the same
+  user/channel.
 - `testItem` in `test/common_test.go` defines a case as:
   - `user`, `channel`, `message`, `threaded` (input fields).
   - `replies []TestMessage` where `TestMessage.Message` is a regex to match output (type `TestMessage` in `test/common_test.go`).

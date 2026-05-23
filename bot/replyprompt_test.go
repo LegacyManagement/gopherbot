@@ -7,6 +7,11 @@ import (
 	"github.com/lnxjedi/gopherbot/robot"
 )
 
+type promptTestResult struct {
+	reply string
+	ret   robot.RetVal
+}
+
 func TestPromptTimeoutForContext(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -314,6 +319,128 @@ func TestInterruptReplyWaitersForTask(t *testing.T) {
 	replies.Unlock()
 	if exists {
 		t.Fatal("matcher should be removed after targeted interruption")
+	}
+}
+
+func TestPromptForReplyRetriesQueuedPromptAfterContention(t *testing.T) {
+	fc := &fakeRuntimeConnector{}
+	prevConnector := interfaces.Connector
+	interfaces.Connector = fc
+	t.Cleanup(func() {
+		interfaces.Connector = prevConnector
+	})
+
+	replies.Lock()
+	replies.m = make(map[replyMatcher][]replyWaiter)
+	replies.Unlock()
+	t.Cleanup(func() {
+		replies.Lock()
+		replies.m = make(map[replyMatcher][]replyWaiter)
+		replies.Unlock()
+	})
+
+	resetPromptShutdownSignal()
+	t.Cleanup(resetPromptShutdownSignal)
+
+	task := &Task{name: "test-prompt-contention", taskType: taskGo}
+	makePromptRobot := func(tid int) Robot {
+		return Robot{
+			tid: tid,
+			Message: &robot.Message{
+				User:     "alice",
+				Channel:  "general",
+				Protocol: robot.Test,
+				Incoming: &robot.ConnectorMessage{Protocol: "test"},
+			},
+			pipeContext: &pipeContext{currentTask: task},
+		}
+	}
+
+	firstCh := make(chan promptTestResult, 1)
+	secondCh := make(chan promptTestResult, 1)
+	first := makePromptRobot(101)
+	second := makePromptRobot(202)
+	matcher := replyMatcher{protocol: "test", user: "alice", channel: "general", thread: ""}
+
+	go func() {
+		reply, ret := first.PromptForReply("YesNo", "First prompt?")
+		firstCh <- promptTestResult{reply: reply, ret: ret}
+	}()
+	waitForPromptWaiters(t, matcher, 1)
+	waitForSentPrompt(t, fc, 1, "First prompt?")
+
+	go func() {
+		reply, ret := second.PromptForReply("YesNo", "Second prompt?")
+		secondCh <- promptTestResult{reply: reply, ret: ret}
+	}()
+	waitForPromptWaiters(t, matcher, 2)
+	waitForSentPrompt(t, fc, 1, "First prompt?")
+
+	if got := deliverPromptReply(t, matcher, "yes"); got != 2 {
+		t.Fatalf("delivered reply to %d waiter(s), want 2", got)
+	}
+	assertPromptResult(t, "first prompt", firstCh, "yes", robot.Ok)
+
+	waitForPromptWaiters(t, matcher, 1)
+	waitForSentPrompt(t, fc, 2, "Second prompt?")
+	if got := deliverPromptReply(t, matcher, "yes"); got != 1 {
+		t.Fatalf("delivered reply to %d waiter(s), want 1", got)
+	}
+	assertPromptResult(t, "second prompt", secondCh, "yes", robot.Ok)
+}
+
+func waitForPromptWaiters(t *testing.T, matcher replyMatcher, want int) {
+	t.Helper()
+	waitFor(t, "prompt waiters", func() bool {
+		replies.Lock()
+		got := len(replies.m[matcher])
+		replies.Unlock()
+		return got == want
+	})
+}
+
+func waitForSentPrompt(t *testing.T, fc *fakeRuntimeConnector, wantCalls int, wantMessage string) {
+	t.Helper()
+	waitFor(t, "sent prompt", func() bool {
+		fc.mu.Lock()
+		defer fc.mu.Unlock()
+		return fc.userChannelCalls == wantCalls && fc.lastMessage == wantMessage
+	})
+}
+
+func deliverPromptReply(t *testing.T, matcher replyMatcher, text string) int {
+	t.Helper()
+	replies.Lock()
+	waiters, ok := replies.m[matcher]
+	if ok {
+		delete(replies.m, matcher)
+	}
+	replies.Unlock()
+	if !ok {
+		t.Fatalf("no waiters registered for matcher %#v", matcher)
+	}
+	for i, rep := range waiters {
+		if i == 0 {
+			rep.replyChannel <- reply{matched: rep.re.MatchString(text), disposition: replied, rep: text}
+			continue
+		}
+		rep.replyChannel <- reply{matched: false, disposition: retryPrompt}
+	}
+	return len(waiters)
+}
+
+func assertPromptResult(t *testing.T, desc string, ch <-chan promptTestResult, wantReply string, wantRet robot.RetVal) {
+	t.Helper()
+	select {
+	case got := <-ch:
+		if got.ret != wantRet {
+			t.Fatalf("%s ret = %s, want %s", desc, got.ret, wantRet)
+		}
+		if got.reply != wantReply {
+			t.Fatalf("%s reply = %q, want %q", desc, got.reply, wantReply)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatalf("timed out waiting for %s result", desc)
 	}
 }
 

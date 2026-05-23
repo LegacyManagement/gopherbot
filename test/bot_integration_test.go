@@ -231,7 +231,7 @@ func TestPrompting(t *testing.T) {
 		// wait ask waits a second before prompting; in 2 seconds it'll message the test to answer the second question first
 		{davidID, general, ";waitask", false, []TestMessage{}, []Event{}, 200},
 		// ask now asks a question right away, but we don't reply until the command above tells us to - by which time the first command has prompted, but now has to wait
-		{davidID, general, ";asknow", false, []TestMessage{{david, general, `Do you like puppies\?`, false}, {null, general, `ok - answer puppies`, false}}, []Event{CommandTaskRan, ExternalTaskRan}, 0},
+		{davidID, general, ";asknow", false, []TestMessage{{david, general, `Do you like puppies\?`, false}}, []Event{CommandTaskRan, ExternalTaskRan}, 2500},
 		{davidID, general, "yes", false, []TestMessage{{david, general, `Do you like kittens\?`, false}, {null, general, `I like puppies too!`, false}}, []Event{}, 0},
 		{davidID, general, "yes", false, []TestMessage{{null, general, `I like kittens too!`, false}}, []Event{}, 0},
 	}

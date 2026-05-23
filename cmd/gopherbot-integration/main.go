@@ -790,39 +790,26 @@ func (d *scriptedConnectorDriver) Send(ctx context.Context, msg suites.Message) 
 
 func (d *scriptedConnectorDriver) Receive(ctx context.Context, want suites.ExpectedMessage) (suites.Message, error) {
 	d.writeTranscriptLine(".. expect reply /%s/\n", want.TextPattern)
-	type receiveResult struct {
-		msg *testc.TestMessage
-		err error
+	got, err := d.conn.GetBotMessageContext(ctx)
+	if err != nil {
+		return suites.Message{}, err
 	}
-	rc := make(chan receiveResult, 1)
-	go func() {
-		msg, err := d.conn.GetBotMessage()
-		rc <- receiveResult{msg: msg, err: err}
-	}()
-	select {
-	case <-ctx.Done():
-		return suites.Message{}, ctx.Err()
-	case res := <-rc:
-		if res.err != nil {
-			return suites.Message{}, res.err
-		}
-		if res.msg == nil {
-			return suites.Message{}, errors.New("nil bot message")
-		}
-		msg := suites.Message{
-			User:     res.msg.User,
-			Channel:  res.msg.Channel,
-			Text:     res.msg.Message,
-			Threaded: res.msg.Threaded,
-			Hidden:   res.msg.Hidden,
-		}
-		target := msg.Channel
-		if target == "" {
-			target = "(dm)"
-		}
-		d.writeTranscriptLine("<- %s/%s: %s\n", msg.User, target, msg.Text)
-		return msg, nil
+	if got == nil {
+		return suites.Message{}, errors.New("nil bot message")
 	}
+	msg := suites.Message{
+		User:     got.User,
+		Channel:  got.Channel,
+		Text:     got.Message,
+		Threaded: got.Threaded,
+		Hidden:   got.Hidden,
+	}
+	target := msg.Channel
+	if target == "" {
+		target = "(dm)"
+	}
+	d.writeTranscriptLine("<- %s/%s: %s\n", msg.User, target, msg.Text)
+	return msg, nil
 }
 
 func (d *scriptedConnectorDriver) LogStep(suiteName, caseName, step, format string, args ...interface{}) {

@@ -9,76 +9,100 @@ metadata:
   tier: focused
 config_dir: test/membrain
 log_name: bottest.log
-cases:
-  - input:
-      user: carol
-      channel: general
-      text: Bender, listen to me
-    replies:
-      - user: carol
-        text_pattern: Ok, .*
-    events:
-      - CommandTaskRan
-      - ExternalTaskRan
-  - input:
-      user: carol
-      text: You're pretty cool
-    replies:
-      - user: carol
-        text_pattern: I hear .*cool"
-    events:
-      - BotDirectMessage
-  - input:
-      user: bob
-      channel: general
-      text: hear me out, Bender
-    replies:
-      - user: bob
+flow:
+  - name: dm-prompt-start
+    case:
+      input:
+        user: carol
         channel: general
-        text_pattern: Well ok then.*
-    events:
-      - CommandTaskRan
-      - ExternalTaskRan
-  - input:
-      user: bob
-      channel: general
-      text: I like kittens
-    replies:
-      - user: bob
+        text: Bender, listen to me
+      replies:
+        - user: carol
+          text_pattern: Ok, .*
+      events:
+        - CommandTaskRan
+        - ExternalTaskRan
+  - name: dm-prompt-reply
+    case:
+      input:
+        user: carol
+        text: You're pretty cool
+      replies:
+        - user: carol
+          text_pattern: I hear .*cool"
+      events:
+        - BotDirectMessage
+  - name: channel-prompt-start
+    case:
+      input:
+        user: bob
         channel: general
-        text_pattern: Ok, I hear you saying "I like kittens".*
-  - input:
+        text: hear me out, Bender
+      replies:
+        - user: bob
+          channel: general
+          text_pattern: Well ok then.*
+      events:
+        - CommandTaskRan
+        - ExternalTaskRan
+  - name: channel-prompt-reply
+    case:
+      input:
+        user: bob
+        channel: general
+        text: I like kittens
+      replies:
+        - user: bob
+          channel: general
+          text_pattern: Ok, I hear you saying "I like kittens".*
+  - name: contention-setup
+    wait_for_idle: true
+    drain_events: true
+  - name: contention-waitask
+    send:
       user: david
       channel: general
       text: ;waitask
-    pause: 200ms
-  - input:
+  - name: contention-overlap
+    sleep: 200ms
+  - name: contention-asknow
+    send:
       user: david
       channel: general
       text: ;asknow
-    replies:
-      - user: david
-        channel: general
-        text_pattern: Do you like puppies\?
-      - channel: general
-        text_pattern: ok - answer puppies
-    events:
+  - name: contention-puppies-prompt
+    receive:
+      user: david
+      channel: general
+      text_pattern: Do you like puppies\?
+  - name: contention-started-events
+    expect_events:
       - CommandTaskRan
       - ExternalTaskRan
-  - input:
+      - CommandTaskRan
+      - ExternalTaskRan
+  - name: contention-wait-for-queued-prompt
+    sleep: 2500ms
+  - name: contention-answer-puppies
+    send:
       user: david
       channel: general
       text: "yes"
-    replies:
-      - user: david
-        channel: general
-        text_pattern: Do you like kittens\?
-      - channel: general
-        text_pattern: I like puppies too!
-  - input:
+  - name: contention-kittens-retry-prompt
+    receive:
+      user: david
+      channel: general
+      text_pattern: Do you like kittens\?
+  - name: contention-puppies-complete
+    receive:
+      channel: general
+      text_pattern: I like puppies too!
+  - name: contention-answer-kittens
+    send:
       user: david
       channel: general
       text: "yes"
-    replies:
-      - channel: general
-        text_pattern: I like kittens too!
+  - name: contention-kittens-complete
+    receive:
+      channel: general
+      text_pattern: I like kittens too!

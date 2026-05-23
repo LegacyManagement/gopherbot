@@ -1,7 +1,7 @@
 package test
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"time"
 
@@ -49,6 +49,16 @@ func (tc *TestConnector) SendBotMessage(msg *TestMessage) {
 
 // GetBotMessage for tests to get replies
 func (tc *TestConnector) GetBotMessage() (*TestMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	return tc.GetBotMessageContext(ctx)
+}
+
+// GetBotMessageContext waits for a reply until the provided context is done.
+func (tc *TestConnector) GetBotMessageContext(ctx context.Context) (*TestMessage, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	select {
 	case incoming := <-tc.speaking:
 		message := incoming.Message
@@ -58,8 +68,8 @@ func (tc *TestConnector) GetBotMessage() (*TestMessage, error) {
 		tc.reportLog("Reply received from robot: u:%s, c:%s, m:%s, t:%t", incoming.User, incoming.Channel, message, incoming.Threaded)
 		time.Sleep(100 * time.Millisecond)
 		return incoming, nil
-	case <-time.After(4 * time.Second):
-		return nil, errors.New("timeout waiting for reply from robot")
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
 
