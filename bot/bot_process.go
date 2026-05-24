@@ -91,6 +91,7 @@ type configuration struct {
 	defaultProtocol      string              // Protocol used for outbound messages without an inbound protocol context
 	secondaryProtocols   []string            // Additional protocols configured for future multi-protocol runtime
 	brainProvider        string              // Type of Brain provider to use
+	brainCache           BrainCacheConfig    // Engine-owned local brain cache settings
 	encryptionKey        string              // Key for encrypting data (unlocks "real" key in brain)
 	historyProvider      string              // Name of the history provider to use
 	queueProviders       []string            // Queue providers to start after full robot initialization
@@ -217,22 +218,12 @@ func initBot() {
 	// All pluggables registered, ok to stop registrations
 	stopRegistrations = true
 
-	if len(currentCfg.brainProvider) > 0 {
-		if registration, ok := brainProviderRegistration(currentCfg.brainProvider); !ok {
-			Log(robot.Fatal, "No provider registered for brain: \"%s\"", currentCfg.brainProvider)
-		} else {
-			brain := registration.Provider(handle)
-			interfaces.brain = brain
-			Log(robot.Info, "Initialized brain provider '%s'", currentCfg.brainProvider)
-		}
-	} else {
-		registration, ok := brainProviderRegistration("mem")
-		if !ok {
-			Log(robot.Fatal, "No provider registered for default brain: \"mem\"")
-		}
-		interfaces.brain = registration.Provider(handle)
-		Log(robot.Error, "No brain configured, falling back to default 'mem' brain - no memories will persist")
+	brain, providerName, err := initializeConfiguredBrain()
+	if err != nil {
+		Log(robot.Fatal, "Initializing brain provider '%s': %v", providerName, err)
 	}
+	interfaces.brain = brain
+	Log(robot.Info, "Initialized brain provider '%s'", providerName)
 	if !encryptionInitialized && len(currentCfg.encryptionKey) > 0 {
 		if initializeEncryptionFromBrain(currentCfg.encryptionKey) {
 			Log(robot.Info, "Successfully initialized encryption from configured key")

@@ -6,6 +6,7 @@ Entries cite files like `main.go` and symbols like `Start` in `bot/start.go` for
 
 - AI-focused docbase root: `aidocs/README.md`
 - Top-level component map: `aidocs/COMPONENT_MAP.md`
+- Brain cache implementation handoff: `aidocs/BRAIN_CACHE_IMPLEMENTATION_PLAN.md`.
 - Startup flow narrative: `aidocs/STARTUP_FLOW.md`
 - High-level v3 goals (project-level): `GOALS_v3.md`
 - v3 compatibility priorities and migration policy: `aidocs/V3_COMPATIBILITY_CONTRACT.md`
@@ -38,6 +39,8 @@ Entries cite files like `main.go` and symbols like `Start` in `bot/start.go` for
 - Bot-side connector capability/registration consumption: `bot/connector_capabilities.go` (shared registration lookup, runtime capability lookup, and test overrides).
 - Connector/brain/history handler implementation: `bot/handler.go` (implements shared `robot.Handler`, including `GetBotInfo()` for connector init).
 - Bot-side provider registration consumption: `bot/provider_registrations.go` (shared brain/history registration lookup + test overrides).
+- Engine-owned brain cache and migration CLI: `bot/brain_cache.go`,
+  `bot/brain_provider.go`, `bot/brain_cli.go`.
 - Pipeline execution + privilege separation internals: `bot/run_pipelines.go`, `bot/task_execution.go`, `bot/task_execution_child.go`, `bot/pipeline_rpc.go`, `bot/pipeline_rpc_interpreter.go`, `bot/pipeline_rpc_javascript.go`, `bot/pipeline_rpc_gsh.go`, `bot/pipeline_rpc_yaegi.go`, `bot/calltask.go`, `bot/privsep.go`, `bot/privsep_darwin.go`, `bot/privsep_process.go`.
 - Startup mode and config loading: `bot/config_load.go` (funcs `detectStartupMode`, `getConfigFile`), `bot/conf.go` (func `loadConfig`).
 - Runtime git branch observability: `bot/git_runtime.go` (startup capture + runtime snapshot for info/admin commands), with privileged sync task registration in `bot/pipe_tasks.go` (`git-sync-state`).
@@ -48,8 +51,13 @@ Entries cite files like `main.go` and symbols like `Start` in `bot/start.go` for
 
 ## brains/
 
-- SimpleBrain providers are registered via `robot.RegisterSimpleBrain` in `brains/dynamodb/static.go`, `brains/cloudflarekv/static.go`, and `brains/firestore/static.go`.
-- Provider implementations: `brains/dynamodb/dynamobrain.go` (func `provider`, methods `Store`, `Retrieve`), `brains/cloudflarekv/cloudflarekvbrain.go` (func `provider`), and `brains/firestore/firestorebrain.go` (func `provider`, methods `Store`, `Retrieve`, `List`, `Delete`).
+- Remote brain providers are registered via `robot.RegisterRemoteBrain` in
+  `brains/dynamodb/static.go`, `brains/cloudflarekv/static.go`, and
+  `brains/firestore/static.go`.
+- Provider implementations expose v3 remote metadata/sync backends plus
+  CLI-only v2 import/export helpers: `brains/dynamodb/dynamobrain.go`,
+  `brains/cloudflarekv/cloudflarekvbrain.go`, and
+  `brains/firestore/firestorebrain.go`.
 
 ## cmd/
 
@@ -63,7 +71,8 @@ Entries cite files like `main.go` and symbols like `Start` in `bot/start.go` for
 - Default configuration: `conf/README.md`, `conf/robot.yaml`, `conf/protocols/terminal.yaml`.
 - Shipped OAuth2/GitHub linker command config: `conf/plugins/github-link.yaml`.
 - Installed connector defaults plus inert setup templates: `conf/protocols/googlechat.yaml`, `conf/protocols/slack.yaml.sample`, `conf/protocols/ssh.yaml`, `conf/protocols/terminal.yaml`, `conf/protocols/nullconn.yaml`. Active robot-specific changes belong under `custom/conf/`.
-- Brain provider defaults: `conf/brains/*.yaml` (`BrainConfig`).
+- Brain provider defaults: `conf/brains/*.yaml` (`BrainConfig`);
+  engine-owned local cache settings live in root `BrainCache`.
 - History provider defaults: `conf/history/*.yaml` (`HistoryConfig`).
 - Queue provider defaults: `conf/queues/*.yaml` (`QueueConfig`).
 - Default job/plugin config examples live under `conf/jobs/` and `conf/plugins/` (e.g., `conf/jobs/pause-notifies.yaml`, `conf/plugins/builtin-help.yaml`).
@@ -146,7 +155,8 @@ Entries cite files like `main.go` and symbols like `Start` in `bot/start.go` for
 - Connector registrations + capabilities: `robot/connectors.go` (`RegisterConnector`, `InitializedConnector`, `ConnectorCapabilities`, `HiddenCommandFormatter`).
 - Queue provider registrations and queue handler contract: `robot/queues.go` (`RegisterQueueProvider`, `QueueProvider`, `QueueHandler`, `QueueMessage`, `QueueDisposition`).
 - Shared robot identity shape for connector/provider init: `robot/botinfo.go` (`BotInfo`).
-- Brain-provider registrations: `robot/brains.go` (`RegisterSimpleBrain`).
+- Brain-provider registrations: `robot/brains.go` (`RegisterSimpleBrain`,
+  `RegisterRemoteBrain`).
 - History-provider registrations: `robot/history_providers.go` (`RegisterHistoryProvider`).
 - OAuth2 extension API request shape: `robot/oauth2.go`.
 - Connector contracts and connector-side APIs: `robot/connector_defs.go` (`Connector` including runtime `Reload`, `ConnectorAPIProvider`, `Injector`, `MessageSource`, and `Handler.ReadEncryptedFile`).

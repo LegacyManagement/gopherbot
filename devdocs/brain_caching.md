@@ -1,0 +1,107 @@
+# Gopherbot Local Brain Cache Architecture
+
+## Problem
+
+Cloud-backed memories are too slow and too expensive to treat as the normal
+runtime read path. Cloudflare KV is the most sensitive case: direct reads during
+startup and normal command handling add noticeable latency and can consume daily
+free-tier operations quickly.
+
+## Runtime model
+
+The v3 engine uses a persistent local file-key cache as the engine-facing brain.
+This cache stores encrypted memory payloads plus v3 metadata and a durable
+outbox. The normal `Retrieve`, `List`, `Store`, and `Delete` calls do not read
+from cloud providers.
+
+`Brain: file` is local-only cache mode. It is valid for development robots and
+does not warn merely because no remote backend exists.
+
+Cloud providers are v3 remote sync backends:
+
+- Cloudflare KV
+- AWS DynamoDB
+- Google Firestore
+
+All shipped cloud providers expose the same v3 remote contract: identity,
+metadata listing, point reads, puts, tombstone deletes, sync policy, and
+shutdown.
+
+## Local cache layout
+
+`BrainCache.Directory` contains:
+
+- `control.json`: cache format, backend identity, completion state, local
+  version counter, and remote checkpoint.
+- `data/`: encrypted payload blobs keyed by encoded memory key.
+- `meta/`: v3 metadata per memory key.
+- `outbox/`: durable pending cloud writes keyed by memory key.
+- `write-budget.json`: persisted per-day cloud write counter when the selected
+  provider sets a write budget.
+
+The cache uses atomic file replacement for control, metadata, outbox, and
+payload writes. This keeps the implementation simple and avoids an embedded
+database dependency for expected ChatOps memory sizes.
+
+## Startup paths
+
+Normal startup has three paths:
+
+1. **Fast restart:** a complete local cache exists. Startup verifies the local
+   checkpoint with one remote point-read and does not scan the cloud.
+2. **Fresh VM with v3 remote:** no local cache exists. Startup scans v3 remote
+   metadata, downloads v3 records, writes the local cache, and continues.
+3. **Fresh VM with v2/unversioned remote:** startup exits cleanly and tells the
+   owner to run `gopherbot pull-brain`.
+
+The v3 runtime requires a v3 remote brain for cloud-backed robots. It may detect
+v2/unversioned records so it can refuse startup, but it must not import or
+upgrade v2 records during normal robot startup.
+
+## Sync behavior
+
+Local writes commit before returning to the engine. For remote brains, the cache
+then writes or replaces an outbox entry and wakes the sync worker.
+
+The sync worker:
+
+- coalesces rapid updates to the same memory key
+- applies provider `MinWriteInterval`
+- enforces provider `WriteBudgetPerDay` using `write-budget.json`
+- leaves unsynced work in `outbox/` when the remote write fails or the daily
+  budget is exhausted
+- flushes until clean or until `FlushOnShutdownMaxDuration` elapses during
+  shutdown
+
+The engine's instance-lock memory key is synced immediately because it protects
+single-robot ownership.
+
+## CLI migration paths
+
+V2 compatibility is CLI-only:
+
+- `gopherbot pull-brain` imports v2/v3 remote records or legacy file-brain data
+  into the local v3 cache. It does not modify cloud by default.
+- `gopherbot pull-brain -upgrade-cloud-v3` additionally writes upgraded v3
+  records to cloud.
+- `gopherbot restore-brain -remote-format v3` writes the local cache to the
+  configured cloud provider in v3 format.
+- `gopherbot restore-brain -remote-format v2` writes v2-compatible cloud records
+  for rollback to v2 code.
+- `restore-brain -force` removes remote keys absent from the local cache.
+
+This keeps normal startup deterministic and avoids hidden one-way upgrades.
+
+## Configuration
+
+Engine-owned cache settings:
+
+```yaml
+BrainCache:
+  Directory: state/brain-cache
+  RequireRemoteCleanOnStartup: false
+```
+
+Provider credentials and provider-sensitive sync tuning stay in
+`conf/brains/<Brain>.yaml`. The cache asks the remote backend for sync policy
+instead of duplicating provider-specific settings in `BrainCache`.

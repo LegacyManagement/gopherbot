@@ -23,7 +23,161 @@ Compatibility scope for this guide:
     `{{ variable "NAME" }}`.
 11. Review `DefaultJobChannel` and any `TimeOuts` values so pipeline alerts
     reach the right operator channel.
-12. Reload and verify runtime with `protocol-list` (or `protocol list`).
+12. Review brain storage migration. Cloud-backed robots must have a v3 remote
+    brain before the v3 engine starts; use `pull-brain` and `restore-brain`
+    for v2 import/export.
+13. Reload and verify runtime with `protocol-list` (or `protocol list`).
+
+## 2026-05-24 Brain Cache and Cloud Brain Migration
+
+Gopherbot v3 uses an engine-owned local brain cache. The cache is the normal
+runtime brain for reads, lists, stores, and deletes. Cloud providers are now
+remote sync backends, so steady-state command execution does not read memories
+from Cloudflare KV, DynamoDB, or Firestore.
+
+This is a deliberate v3 compatibility boundary:
+
+- The v3 runtime requires v3-formatted cloud brain records for cloud-backed
+  robots.
+- V2 cloud compatibility exists only in CLI commands.
+- A first start on a new VM succeeds when the configured cloud brain is already
+  v3-compatible; the engine hydrates the local cache and continues startup.
+- A first start with no local cache and a v2/unversioned cloud brain exits
+  cleanly and tells the operator to run `gopherbot pull-brain`.
+- `Brain: file` remains valid for development robots. It is now local-cache
+  only and does not warn or error just because no cloud backend is configured.
+
+### New configuration
+
+Installed defaults now include:
+
+```yaml
+BrainCache:
+  Directory: {{ env "GOPHER_BRAIN_CACHE_DIRECTORY" | default "<state>/brain-cache" }}
+  RequireRemoteCleanOnStartup: false
+```
+
+`<state>` follows `GOPHER_STATE_DIRECTORY` and defaults to `state`.
+`GOPHER_BRAIN_CACHE_DIRECTORY` overrides the cache location directly.
+
+Configuration responsibilities are split:
+
+- `Brain` selects the provider: `file`, `mem`, `cloudflare`, `dynamo`, or
+  `firestore`.
+- `BrainCache.Directory` selects the local persistent cache path.
+- `BrainCache.RequireRemoteCleanOnStartup`, when true, refuses startup if the
+  local cache still has pending cloud-sync operations.
+- Provider credentials stay in `conf/brains/<Brain>.yaml` under `BrainConfig`.
+- Provider-sensitive sync settings live with the provider, not in `BrainCache`.
+
+Cloudflare KV accepts these optional `BrainConfig` sync settings:
+
+```yaml
+BrainConfig:
+  CloudWriteBudgetPerDay: 900
+  CloudWriteMinIntervalMillis: 1100
+  CoalesceWindowMillis: 2000
+  FlushOnShutdownMaxMillis: 10000
+```
+
+The defaults are intended to keep normal Cloudflare KV use inside the free tier.
+DynamoDB and Firestore currently use the engine cache defaults unless provider
+config later grows provider-specific tuning.
+
+The old file brain setting remains useful only for importing legacy local
+memories:
+
+```yaml
+BrainConfig:
+  BrainDirectory: state/brain
+  Encode: true
+```
+
+After import, normal `Brain: file` runtime uses `BrainCache.Directory`.
+
+### Cloud-backed upgrade paths
+
+For an existing v2 robot using Cloudflare KV, DynamoDB, or Firestore:
+
+1. Configure v3 with the same cloud provider credentials.
+2. Run:
+
+   ```bash
+   gopherbot pull-brain
+   ```
+
+   This reads v2 or v3 cloud records and writes the local v3 cache. By default
+   it does not modify the cloud provider.
+
+3. Write v3 cloud records before starting the v3 runtime:
+
+   ```bash
+   gopherbot restore-brain -remote-format v3
+   ```
+
+   Or combine import and cloud upgrade:
+
+   ```bash
+   gopherbot pull-brain -upgrade-cloud-v3
+   ```
+
+4. Start the v3 robot.
+
+If a provider write budget stops the cloud upgrade partway through, the local
+cache remains usable and complete. Re-run `restore-brain -remote-format v3`
+with an appropriate `-budget` or provider budget until all cloud records are v3.
+
+### Local file brain upgrade
+
+For a development robot that used the old file brain directory:
+
+```bash
+gopherbot pull-brain
+```
+
+This imports `BrainConfig.BrainDirectory` into `BrainCache.Directory`. Starting
+with `Brain: file` then uses the local cache directly.
+
+To later move that development robot to a cloud provider:
+
+1. Change `Brain` and `conf/brains/<provider>.yaml` to the target cloud
+   provider.
+2. Run:
+
+   ```bash
+   gopherbot restore-brain -remote-format v3
+   ```
+
+3. Start the v3 robot.
+
+### Rollback flexibility
+
+The CLI can also write v2-compatible cloud data so a robot owner can deliberately
+return to v2 code:
+
+```bash
+gopherbot restore-brain -remote-format v2
+```
+
+After this command, the remote brain is v2-compatible and is not valid for v3
+runtime startup until it is written back as v3.
+
+Useful command options:
+
+- `pull-brain -dry-run` reports remote v2/v3 counts without writing.
+- `pull-brain -force` replaces an existing local cache.
+- `pull-brain -upgrade-cloud-v3` imports locally and writes upgraded v3 cloud
+  records.
+- `pull-brain -budget <n>` limits cloud writes for that run.
+- `restore-brain -remote-format v2|v3` chooses the cloud output format.
+- `restore-brain -force` removes remote keys that are not present in the local
+  cache.
+- `restore-brain -dry-run` reports planned writes/removals.
+- `restore-brain -budget <n>` limits cloud writes for that run.
+
+Normal robot startup contains no v2 conversion logic. If startup reports that a
+cloud brain is v2/unversioned, run the CLI migration path rather than expecting
+the daemon to repair cloud state automatically.
 
 ## 2.9.0 Pre-v3 Pilot Checklist
 

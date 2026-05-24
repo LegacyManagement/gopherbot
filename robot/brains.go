@@ -6,7 +6,8 @@ import (
 )
 
 type BrainProviderRegistration struct {
-	Provider func(Handler) SimpleBrain
+	Provider       func(Handler) SimpleBrain
+	RemoteProvider func(Handler) RemoteBrainBackend
 }
 
 var brainProviderRegistry = struct {
@@ -29,6 +30,20 @@ func RegisterSimpleBrain(name string, provider func(Handler) SimpleBrain) {
 	}
 	brainProviderRegistry.registrations[name] = BrainProviderRegistration{
 		Provider: provider,
+	}
+}
+
+func RegisterRemoteBrain(name string, provider func(Handler) RemoteBrainBackend) {
+	brainProviderRegistry.Lock()
+	defer brainProviderRegistry.Unlock()
+
+	validateNameOrFatal(name)
+
+	if _, exists := brainProviderRegistry.registrations[name]; exists {
+		log.Fatalf("Brain provider '%s' is already registered", name)
+	}
+	brainProviderRegistry.registrations[name] = BrainProviderRegistration{
+		RemoteProvider: provider,
 	}
 }
 

@@ -5,9 +5,9 @@ custom-override layering is a core repository pattern, not a Google Chat
 special case.
 
 Layout overview:
-- `robot.yaml`: global robot policy and runtime selection (protocols, brain provider, history provider, etc.)
+- `robot.yaml`: global robot policy and runtime selection (protocols, brain provider, `BrainCache`, history provider, etc.)
 - `protocols/<protocol>.yaml`: installed connector defaults (`ProtocolConfig`) that custom robots override from `custom/conf/protocols/`
 - `*.yaml.sample`: inert owner/setup templates that are not loaded until copied or renamed to an active `*.yaml` path
-- `brains/<provider>.yaml`: brain-provider-specific settings (`BrainConfig`)
+- `brains/<provider>.yaml`: brain-provider-specific credentials and sync policy settings (`BrainConfig`)
 - `history/<provider>.yaml`: history-provider-specific settings (`HistoryConfig`)
 - `queues/<provider>.yaml`: queue-provider-specific settings (`QueueConfig`)

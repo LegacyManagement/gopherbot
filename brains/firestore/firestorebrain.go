@@ -23,7 +23,12 @@ type brainConfig struct {
 }
 
 type storedMemory struct {
-	Content []byte `firestore:"content"`
+	Content   []byte    `firestore:"content"`
+	Format    string    `firestore:"format"`
+	Version   uint64    `firestore:"version"`
+	Checksum  string    `firestore:"checksum"`
+	Deleted   bool      `firestore:"deleted"`
+	UpdatedAt time.Time `firestore:"updated_at"`
 }
 
 type firestoreBrain struct {
@@ -115,6 +120,11 @@ func (b *firestoreBrain) Shutdown() {
 }
 
 func provider(r robot.Handler) robot.SimpleBrain {
+	remote := remoteProvider(r)
+	return remote.(*firestoreRemoteBrain).firestoreBrain
+}
+
+func remoteProvider(r robot.Handler) robot.RemoteBrainBackend {
 	var cfg brainConfig
 	if err := r.GetBrainConfig(&cfg); err != nil {
 		r.Log(robot.Fatal, "Unable to retrieve Firestore brain configuration: %v", err)
@@ -164,8 +174,129 @@ func provider(r robot.Handler) robot.SimpleBrain {
 	}
 
 	r.Log(robot.Info, "Initialized Firestore brain for project '%s', database '%s', collection '%s'", cfg.ProjectID, cfg.DatabaseID, cfg.Collection)
-	return &firestoreBrain{
+	return &firestoreRemoteBrain{firestoreBrain: &firestoreBrain{
 		cfg:    cfg,
 		client: client,
+	}}
+}
+
+type firestoreRemoteBrain struct {
+	*firestoreBrain
+}
+
+func (b *firestoreRemoteBrain) Identity() robot.BrainBackendIdentity {
+	return robot.BrainBackendIdentity{
+		Provider: "firestore",
+		Scope:    b.cfg.ProjectID + "/" + b.cfg.DatabaseID + "/" + b.cfg.Collection,
 	}
 }
+
+func (b *firestoreRemoteBrain) SyncPolicy() robot.BrainSyncPolicy {
+	return robot.BrainSyncPolicy{}
+}
+
+func (b *firestoreRemoteBrain) Get(ctx context.Context, key string) (robot.RemoteBrainRecord, bool, error) {
+	doc, err := b.client.Collection(b.cfg.Collection).Doc(key).Get(ctx)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return robot.RemoteBrainRecord{}, false, nil
+		}
+		return robot.RemoteBrainRecord{}, false, err
+	}
+	if doc == nil || !doc.Exists() {
+		return robot.RemoteBrainRecord{}, false, nil
+	}
+	var stored storedMemory
+	if err := doc.DataTo(&stored); err != nil {
+		return robot.RemoteBrainRecord{}, false, err
+	}
+	if stored.Format != brainCacheFormat {
+		return robot.RemoteBrainRecord{Key: key}, true, status.Error(codes.FailedPrecondition, "not a v3 brain record")
+	}
+	return robot.RemoteBrainRecord{
+		Key:       key,
+		Payload:   stored.Content,
+		Format:    stored.Format,
+		Version:   stored.Version,
+		Checksum:  stored.Checksum,
+		Deleted:   stored.Deleted,
+		UpdatedAt: stored.UpdatedAt,
+	}, true, nil
+}
+
+func (b *firestoreRemoteBrain) Put(ctx context.Context, record robot.RemoteBrainRecord) error {
+	_, err := b.client.Collection(b.cfg.Collection).Doc(record.Key).Set(ctx, storedMemory{
+		Content:   record.Payload,
+		Format:    brainCacheFormat,
+		Version:   record.Version,
+		Checksum:  record.Checksum,
+		Deleted:   record.Deleted,
+		UpdatedAt: record.UpdatedAt,
+	})
+	return err
+}
+
+func (b *firestoreRemoteBrain) Delete(ctx context.Context, tombstone robot.RemoteBrainRecord) error {
+	tombstone.Format = brainCacheFormat
+	tombstone.Deleted = true
+	return b.Put(ctx, tombstone)
+}
+
+func (b *firestoreRemoteBrain) ListMetadata(ctx context.Context, cursor string, limit int) (robot.RemoteBrainPage, error) {
+	refs, err := b.client.Collection(b.cfg.Collection).DocumentRefs(ctx).GetAll()
+	if err != nil {
+		return robot.RemoteBrainPage{}, err
+	}
+	records := make([]robot.RemoteBrainRecord, 0, len(refs))
+	for _, ref := range refs {
+		doc, err := ref.Get(ctx)
+		if err != nil {
+			return robot.RemoteBrainPage{}, err
+		}
+		var stored storedMemory
+		if err := doc.DataTo(&stored); err != nil {
+			return robot.RemoteBrainPage{}, err
+		}
+		records = append(records, robot.RemoteBrainRecord{
+			Key:       ref.ID,
+			Format:    stored.Format,
+			Version:   stored.Version,
+			Checksum:  stored.Checksum,
+			Deleted:   stored.Deleted,
+			UpdatedAt: stored.UpdatedAt,
+		})
+	}
+	sort.Slice(records, func(i, j int) bool { return records[i].Key < records[j].Key })
+	return robot.RemoteBrainPage{Records: records}, nil
+}
+
+func (b *firestoreRemoteBrain) ListV2(ctx context.Context, cursor string, limit int) (robot.LegacyBrainPage, error) {
+	keys, err := b.List()
+	if err != nil {
+		return robot.LegacyBrainPage{}, err
+	}
+	records := make([]robot.LegacyBrainRecord, 0, len(keys))
+	for _, key := range keys {
+		records = append(records, robot.LegacyBrainRecord{Key: key})
+	}
+	return robot.LegacyBrainPage{Records: records}, nil
+}
+
+func (b *firestoreRemoteBrain) GetV2(ctx context.Context, key string) (robot.LegacyBrainRecord, bool, error) {
+	payload, exists, err := b.Retrieve(key)
+	if err != nil || !exists || payload == nil {
+		return robot.LegacyBrainRecord{}, exists, err
+	}
+	return robot.LegacyBrainRecord{Key: key, Payload: *payload}, true, nil
+}
+
+func (b *firestoreRemoteBrain) PutV2(ctx context.Context, record robot.LegacyBrainRecord) error {
+	payload := record.Payload
+	return b.Store(record.Key, &payload)
+}
+
+func (b *firestoreRemoteBrain) DeleteV2(ctx context.Context, key string) error {
+	return b.firestoreBrain.Delete(key)
+}
+
+const brainCacheFormat = "gopherbot-brain-v3"

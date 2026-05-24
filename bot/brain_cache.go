@@ -1,0 +1,901 @@
+package bot
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/lnxjedi/gopherbot/robot"
+)
+
+const brainCacheFormat = "gopherbot-brain-v3"
+
+type BrainCacheConfig struct {
+	Directory                   string `yaml:"Directory"`
+	RequireRemoteCleanOnStartup bool   `yaml:"RequireRemoteCleanOnStartup"`
+}
+
+func defaultBrainCacheConfig(cfg BrainCacheConfig) BrainCacheConfig {
+	if strings.TrimSpace(cfg.Directory) == "" {
+		cfg.Directory = filepath.Join("state", "brain-cache")
+	}
+	return cfg
+}
+
+type brainCacheControl struct {
+	Format         string                     `json:"format"`
+	Provider       robot.BrainBackendIdentity `json:"provider"`
+	Complete       bool                       `json:"complete"`
+	NextVersion    uint64                     `json:"next_version"`
+	CheckpointKey  string                     `json:"checkpoint_key,omitempty"`
+	CheckpointVers uint64                     `json:"checkpoint_version,omitempty"`
+	CheckpointSum  string                     `json:"checkpoint_checksum,omitempty"`
+	ImportedFrom   string                     `json:"imported_from,omitempty"`
+	UpdatedAt      time.Time                  `json:"updated_at"`
+}
+
+type brainCacheMeta struct {
+	Format    string    `json:"format"`
+	Key       string    `json:"key"`
+	Version   uint64    `json:"version"`
+	Checksum  string    `json:"checksum"`
+	Deleted   bool      `json:"deleted"`
+	UpdatedAt time.Time `json:"updated_at"`
+	SyncedAt  time.Time `json:"synced_at,omitempty"`
+}
+
+type brainCacheOutboxEntry struct {
+	Key     string `json:"key"`
+	Version uint64 `json:"version"`
+	Delete  bool   `json:"delete"`
+}
+
+type brainCacheWriteBudget struct {
+	Date   string `json:"date"`
+	Writes int    `json:"writes"`
+}
+
+type cachedBrain struct {
+	cfg     BrainCacheConfig
+	remote  robot.RemoteBrainBackend
+	control brainCacheControl
+	policy  robot.BrainSyncPolicy
+
+	mu      sync.Mutex
+	wake    chan struct{}
+	done    chan struct{}
+	stopped bool
+	wg      sync.WaitGroup
+}
+
+func newLocalCachedBrain(cfg BrainCacheConfig) (*cachedBrain, error) {
+	cfg = defaultBrainCacheConfig(cfg)
+	cb := &cachedBrain{cfg: cfg}
+	if err := cb.openLocalOnly(); err != nil {
+		return nil, err
+	}
+	return cb, nil
+}
+
+func newRemoteCachedBrain(cfg BrainCacheConfig, remote robot.RemoteBrainBackend) (*cachedBrain, error) {
+	cfg = defaultBrainCacheConfig(cfg)
+	cb := &cachedBrain{
+		cfg:    cfg,
+		remote: remote,
+		policy: defaultBrainSyncPolicy(remote.SyncPolicy()),
+		wake:   make(chan struct{}, 1),
+		done:   make(chan struct{}),
+	}
+	if err := cb.openRemote(); err != nil {
+		remote.Shutdown()
+		return nil, err
+	}
+	cb.wg.Add(1)
+	go cb.syncLoop()
+	return cb, nil
+}
+
+func openBrainCacheForImport(cfg BrainCacheConfig, identity robot.BrainBackendIdentity, importedFrom string, force bool) (*cachedBrain, error) {
+	cfg = defaultBrainCacheConfig(cfg)
+	if force {
+		if err := os.RemoveAll(cfg.Directory); err != nil {
+			return nil, err
+		}
+	}
+	cb := &cachedBrain{cfg: cfg}
+	if err := cb.ensureDirs(); err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(cb.controlPath()); err == nil {
+		if err := cb.loadControl(identity); err != nil {
+			return nil, err
+		}
+	} else {
+		cb.control = brainCacheControl{
+			Format:       brainCacheFormat,
+			Provider:     identity,
+			Complete:     false,
+			NextVersion:  1,
+			ImportedFrom: importedFrom,
+			UpdatedAt:    time.Now().UTC(),
+		}
+		if err := cb.writeControl(); err != nil {
+			return nil, err
+		}
+	}
+	return cb, nil
+}
+
+func openExistingBrainCacheAny(cfg BrainCacheConfig) (*cachedBrain, error) {
+	cfg = defaultBrainCacheConfig(cfg)
+	cb := &cachedBrain{cfg: cfg}
+	var control brainCacheControl
+	data, err := os.ReadFile(cb.controlPath())
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &control); err != nil {
+		return nil, err
+	}
+	if control.Format != brainCacheFormat {
+		return nil, fmt.Errorf("unsupported brain cache format %q", control.Format)
+	}
+	cb.control = control
+	return cb, nil
+}
+
+func defaultBrainSyncPolicy(policy robot.BrainSyncPolicy) robot.BrainSyncPolicy {
+	if policy.CoalesceWindow <= 0 {
+		policy.CoalesceWindow = 2 * time.Second
+	}
+	if policy.FlushOnShutdownMaxDuration <= 0 {
+		policy.FlushOnShutdownMaxDuration = 10 * time.Second
+	}
+	return policy
+}
+
+func (b *cachedBrain) openLocalOnly() error {
+	if err := b.ensureDirs(); err != nil {
+		return err
+	}
+	controlPath := b.controlPath()
+	if _, err := os.Stat(controlPath); errors.Is(err, os.ErrNotExist) {
+		b.control = brainCacheControl{
+			Format:      brainCacheFormat,
+			Provider:    robot.BrainBackendIdentity{Provider: "file", Scope: "local"},
+			Complete:    true,
+			NextVersion: 1,
+			UpdatedAt:   time.Now().UTC(),
+		}
+		return b.writeControl()
+	}
+	return b.loadControl(robot.BrainBackendIdentity{Provider: "file", Scope: "local"})
+}
+
+func (b *cachedBrain) openRemote() error {
+	if b.remote == nil {
+		return errors.New("remote cached brain requires remote backend")
+	}
+	if err := b.ensureDirs(); err != nil {
+		return err
+	}
+	identity := b.remote.Identity()
+	controlPath := b.controlPath()
+	if _, err := os.Stat(controlPath); errors.Is(err, os.ErrNotExist) {
+		return b.hydrateFromV3Remote(identity)
+	}
+	if err := b.loadControl(identity); err != nil {
+		return err
+	}
+	if !b.control.Complete {
+		return fmt.Errorf("local brain cache at %s is incomplete; run gopherbot pull-brain", b.cfg.Directory)
+	}
+	if b.control.CheckpointKey != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		record, exists, err := b.remote.Get(ctx, b.control.CheckpointKey)
+		if err != nil {
+			return fmt.Errorf("verifying brain cache checkpoint: %w", err)
+		}
+		if !exists || record.Format != brainCacheFormat {
+			return fmt.Errorf("remote brain is not v3-compatible; run gopherbot pull-brain")
+		}
+		if record.Version != b.control.CheckpointVers || record.Checksum != b.control.CheckpointSum {
+			return fmt.Errorf("remote brain checkpoint mismatch for %s; run gopherbot pull-brain", b.control.CheckpointKey)
+		}
+	}
+	if b.cfg.RequireRemoteCleanOnStartup {
+		pending, err := b.outboxEntries()
+		if err != nil {
+			return err
+		}
+		if len(pending) > 0 {
+			return fmt.Errorf("brain cache has %d pending cloud sync operation(s)", len(pending))
+		}
+	}
+	return nil
+}
+
+func (b *cachedBrain) hydrateFromV3Remote(identity robot.BrainBackendIdentity) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	b.control = brainCacheControl{
+		Format:      brainCacheFormat,
+		Provider:    identity,
+		Complete:    false,
+		NextVersion: 1,
+		UpdatedAt:   time.Now().UTC(),
+	}
+	if err := b.writeControl(); err != nil {
+		return err
+	}
+	cursor := ""
+	var metas []robot.RemoteBrainRecord
+	for {
+		page, err := b.remote.ListMetadata(ctx, cursor, 1000)
+		if err != nil {
+			return fmt.Errorf("listing remote brain metadata: %w", err)
+		}
+		for _, record := range page.Records {
+			if record.Format != brainCacheFormat {
+				return fmt.Errorf("remote brain contains v2/unversioned memories; run gopherbot pull-brain")
+			}
+			metas = append(metas, record)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	sort.Slice(metas, func(i, j int) bool {
+		if metas[i].Version == metas[j].Version {
+			return metas[i].Key < metas[j].Key
+		}
+		return metas[i].Version < metas[j].Version
+	})
+	for _, meta := range metas {
+		record, exists, err := b.remote.Get(ctx, meta.Key)
+		if err != nil {
+			return fmt.Errorf("hydrating remote memory %s: %w", meta.Key, err)
+		}
+		if !exists {
+			continue
+		}
+		if record.Format != brainCacheFormat {
+			return fmt.Errorf("remote brain contains v2/unversioned memory %s; run gopherbot pull-brain", meta.Key)
+		}
+		localMeta := brainCacheMeta{
+			Format:    brainCacheFormat,
+			Key:       record.Key,
+			Version:   record.Version,
+			Checksum:  record.Checksum,
+			Deleted:   record.Deleted,
+			UpdatedAt: record.UpdatedAt,
+			SyncedAt:  time.Now().UTC(),
+		}
+		if localMeta.UpdatedAt.IsZero() {
+			localMeta.UpdatedAt = time.Now().UTC()
+		}
+		if !record.Deleted {
+			if checksumBytes(record.Payload) != record.Checksum {
+				return fmt.Errorf("remote memory %s checksum mismatch", record.Key)
+			}
+			if err := b.writePayload(record.Key, record.Payload); err != nil {
+				return err
+			}
+		}
+		if err := b.writeMeta(localMeta); err != nil {
+			return err
+		}
+		if record.Version >= b.control.NextVersion {
+			b.control.NextVersion = record.Version + 1
+		}
+		if record.Version >= b.control.CheckpointVers {
+			b.control.CheckpointKey = record.Key
+			b.control.CheckpointVers = record.Version
+			b.control.CheckpointSum = record.Checksum
+		}
+	}
+	if b.control.NextVersion == 0 {
+		b.control.NextVersion = 1
+	}
+	b.control.Complete = true
+	b.control.UpdatedAt = time.Now().UTC()
+	return b.writeControl()
+}
+
+func (b *cachedBrain) loadControl(identity robot.BrainBackendIdentity) error {
+	var control brainCacheControl
+	data, err := os.ReadFile(b.controlPath())
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, &control); err != nil {
+		return err
+	}
+	if control.Format != brainCacheFormat {
+		return fmt.Errorf("unsupported brain cache format %q", control.Format)
+	}
+	if control.Provider != identity {
+		return fmt.Errorf("brain cache provider identity mismatch: cache is %s/%s, config is %s/%s; run gopherbot pull-brain or choose another BrainCache.Directory",
+			control.Provider.Provider, control.Provider.Scope, identity.Provider, identity.Scope)
+	}
+	if control.NextVersion == 0 {
+		control.NextVersion = 1
+	}
+	b.control = control
+	return nil
+}
+
+func (b *cachedBrain) Store(key string, blob *[]byte) error {
+	if blob == nil {
+		empty := []byte{}
+		blob = &empty
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.stopped {
+		return fmt.Errorf("brain is shutting down; no new writes accepted")
+	}
+	version := b.reserveVersionLocked()
+	now := time.Now().UTC()
+	meta := brainCacheMeta{
+		Format:    brainCacheFormat,
+		Key:       key,
+		Version:   version,
+		Checksum:  checksumBytes(*blob),
+		UpdatedAt: now,
+	}
+	if err := b.writePayload(key, *blob); err != nil {
+		return err
+	}
+	if err := b.writeMeta(meta); err != nil {
+		return err
+	}
+	if b.remote != nil {
+		if err := b.writeOutbox(brainCacheOutboxEntry{Key: key, Version: version}); err != nil {
+			return err
+		}
+		if key == brainLockKey {
+			return b.syncKeyLocked(key)
+		}
+		b.signalSync()
+	}
+	return nil
+}
+
+func (b *cachedBrain) importRaw(key string, payload []byte, deleted bool) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	version := b.reserveVersionLocked()
+	meta := brainCacheMeta{
+		Format:    brainCacheFormat,
+		Key:       key,
+		Version:   version,
+		Checksum:  checksumBytes(payload),
+		Deleted:   deleted,
+		UpdatedAt: time.Now().UTC(),
+	}
+	if deleted {
+		_ = os.Remove(b.payloadPath(key))
+	} else if err := b.writePayload(key, payload); err != nil {
+		return err
+	}
+	if err := b.writeMeta(meta); err != nil {
+		return err
+	}
+	if version >= b.control.CheckpointVers {
+		b.control.CheckpointKey = key
+		b.control.CheckpointVers = version
+		b.control.CheckpointSum = meta.Checksum
+	}
+	return b.writeControl()
+}
+
+func (b *cachedBrain) importV3Record(record robot.RemoteBrainRecord) error {
+	if record.Format != brainCacheFormat {
+		return fmt.Errorf("cannot import non-v3 brain record %s", record.Key)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now().UTC()
+	if record.UpdatedAt.IsZero() {
+		record.UpdatedAt = now
+	}
+	if record.Checksum == "" && !record.Deleted {
+		record.Checksum = checksumBytes(record.Payload)
+	}
+	if !record.Deleted && checksumBytes(record.Payload) != record.Checksum {
+		return fmt.Errorf("remote memory %s checksum mismatch", record.Key)
+	}
+	meta := brainCacheMeta{
+		Format:    brainCacheFormat,
+		Key:       record.Key,
+		Version:   record.Version,
+		Checksum:  record.Checksum,
+		Deleted:   record.Deleted,
+		UpdatedAt: record.UpdatedAt,
+		SyncedAt:  now,
+	}
+	if record.Deleted {
+		_ = os.Remove(b.payloadPath(record.Key))
+	} else if err := b.writePayload(record.Key, record.Payload); err != nil {
+		return err
+	}
+	if err := b.writeMeta(meta); err != nil {
+		return err
+	}
+	if record.Version >= b.control.NextVersion {
+		b.control.NextVersion = record.Version + 1
+	}
+	if record.Version >= b.control.CheckpointVers {
+		b.control.CheckpointKey = record.Key
+		b.control.CheckpointVers = record.Version
+		b.control.CheckpointSum = record.Checksum
+	}
+	return b.writeControl()
+}
+
+func (b *cachedBrain) finalizeImport(importedFrom string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.control.Complete = true
+	b.control.ImportedFrom = importedFrom
+	b.control.UpdatedAt = time.Now().UTC()
+	return b.writeControl()
+}
+
+func (b *cachedBrain) Retrieve(key string) (*[]byte, bool, error) {
+	if !keyRe.MatchString(key) {
+		return nil, false, fmt.Errorf("invalid memory key %q", key)
+	}
+	meta, exists, err := b.readMeta(key)
+	if err != nil || !exists || meta.Deleted {
+		return nil, false, err
+	}
+	payload, err := os.ReadFile(b.payloadPath(key))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return &payload, true, nil
+}
+
+func (b *cachedBrain) List() ([]string, error) {
+	entries, err := os.ReadDir(b.metaDir())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	keys := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		meta, err := b.readMetaFile(filepath.Join(b.metaDir(), entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		if !meta.Deleted {
+			keys = append(keys, meta.Key)
+		}
+	}
+	sort.Strings(keys)
+	return keys, nil
+}
+
+func (b *cachedBrain) Delete(key string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	version := b.reserveVersionLocked()
+	now := time.Now().UTC()
+	meta := brainCacheMeta{
+		Format:    brainCacheFormat,
+		Key:       key,
+		Version:   version,
+		Deleted:   true,
+		UpdatedAt: now,
+	}
+	_ = os.Remove(b.payloadPath(key))
+	if err := b.writeMeta(meta); err != nil {
+		return err
+	}
+	if b.remote != nil {
+		if err := b.writeOutbox(brainCacheOutboxEntry{Key: key, Version: version, Delete: true}); err != nil {
+			return err
+		}
+		if key == brainLockKey {
+			return b.syncKeyLocked(key)
+		}
+		b.signalSync()
+	}
+	return nil
+}
+
+func (b *cachedBrain) Shutdown() {
+	b.mu.Lock()
+	if b.stopped {
+		b.mu.Unlock()
+		return
+	}
+	b.stopped = true
+	b.mu.Unlock()
+	if b.remote != nil {
+		b.signalSync()
+		close(b.done)
+		finished := make(chan struct{})
+		go func() {
+			b.wg.Wait()
+			close(finished)
+		}()
+		timeout := b.policy.FlushOnShutdownMaxDuration
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		select {
+		case <-finished:
+		case <-time.After(timeout):
+			Log(robot.Warn, "Timed out waiting for brain cache cloud sync shutdown after %s", timeout)
+		}
+		b.remote.Shutdown()
+	}
+}
+
+func (b *cachedBrain) reserveVersionLocked() uint64 {
+	version := b.control.NextVersion
+	if version == 0 {
+		version = 1
+	}
+	b.control.NextVersion = version + 1
+	b.control.UpdatedAt = time.Now().UTC()
+	_ = b.writeControl()
+	return version
+}
+
+func (b *cachedBrain) syncLoop() {
+	defer b.wg.Done()
+	for {
+		select {
+		case <-b.done:
+			b.syncPending()
+			return
+		case <-b.wake:
+			if b.policy.CoalesceWindow > 0 {
+				select {
+				case <-b.done:
+					b.syncPending()
+					return
+				case <-time.After(b.policy.CoalesceWindow):
+				}
+			}
+			b.syncPending()
+		}
+	}
+}
+
+func (b *cachedBrain) syncPending() {
+	for {
+		entry, ok, err := b.nextOutboxEntry()
+		if err != nil {
+			Log(robot.Warn, "Reading brain cache outbox: %v", err)
+			return
+		}
+		if !ok {
+			return
+		}
+		b.mu.Lock()
+		err = b.syncKeyLocked(entry.Key)
+		b.mu.Unlock()
+		if err != nil {
+			Log(robot.Warn, "Syncing brain memory %s: %v", entry.Key, err)
+			return
+		}
+		if b.policy.MinWriteInterval > 0 {
+			select {
+			case <-b.done:
+				return
+			case <-time.After(b.policy.MinWriteInterval):
+			}
+		}
+	}
+}
+
+func (b *cachedBrain) syncKeyLocked(key string) error {
+	if b.remote == nil {
+		return nil
+	}
+	meta, exists, err := b.readMeta(key)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return b.removeOutbox(key)
+	}
+	record := robot.RemoteBrainRecord{
+		Key:       meta.Key,
+		Format:    meta.Format,
+		Version:   meta.Version,
+		Checksum:  meta.Checksum,
+		Deleted:   meta.Deleted,
+		UpdatedAt: meta.UpdatedAt,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := b.checkCloudWriteBudgetLocked(); err != nil {
+		return err
+	}
+	if meta.Deleted {
+		if err := b.remote.Delete(ctx, record); err != nil {
+			return err
+		}
+	} else {
+		payload, err := os.ReadFile(b.payloadPath(key))
+		if err != nil {
+			return err
+		}
+		record.Payload = payload
+		if record.Checksum == "" {
+			record.Checksum = checksumBytes(payload)
+		}
+		if err := b.remote.Put(ctx, record); err != nil {
+			return err
+		}
+	}
+	if err := b.recordCloudWriteLocked(); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	meta.SyncedAt = now
+	if err := b.writeMeta(meta); err != nil {
+		return err
+	}
+	if meta.Version >= b.control.CheckpointVers {
+		b.control.CheckpointKey = key
+		b.control.CheckpointVers = meta.Version
+		b.control.CheckpointSum = meta.Checksum
+		b.control.UpdatedAt = now
+		if err := b.writeControl(); err != nil {
+			return err
+		}
+	}
+	return b.removeOutbox(key)
+}
+
+func (b *cachedBrain) nextOutboxEntry() (brainCacheOutboxEntry, bool, error) {
+	entries, err := b.outboxEntries()
+	if err != nil || len(entries) == 0 {
+		return brainCacheOutboxEntry{}, false, err
+	}
+	return entries[0], true, nil
+}
+
+func (b *cachedBrain) outboxEntries() ([]brainCacheOutboxEntry, error) {
+	files, err := os.ReadDir(b.outboxDir())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]brainCacheOutboxEntry, 0, len(files))
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(b.outboxDir(), file.Name()))
+		if err != nil {
+			return nil, err
+		}
+		var entry brainCacheOutboxEntry
+		if err := json.Unmarshal(data, &entry); err != nil {
+			return nil, err
+		}
+		out = append(out, entry)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Version == out[j].Version {
+			return out[i].Key < out[j].Key
+		}
+		return out[i].Version < out[j].Version
+	})
+	return out, nil
+}
+
+func (b *cachedBrain) signalSync() {
+	if b.wake == nil {
+		return
+	}
+	select {
+	case b.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (b *cachedBrain) ensureDirs() error {
+	for _, dir := range []string{b.cfg.Directory, b.dataDir(), b.metaDir(), b.outboxDir()} {
+		if err := os.MkdirAll(dir, 0750); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *cachedBrain) controlPath() string { return filepath.Join(b.cfg.Directory, "control.json") }
+func (b *cachedBrain) dataDir() string     { return filepath.Join(b.cfg.Directory, "data") }
+func (b *cachedBrain) metaDir() string     { return filepath.Join(b.cfg.Directory, "meta") }
+func (b *cachedBrain) outboxDir() string   { return filepath.Join(b.cfg.Directory, "outbox") }
+
+func (b *cachedBrain) payloadPath(key string) string {
+	return filepath.Join(b.dataDir(), encodeBrainCacheKey(key)+".blob")
+}
+
+func (b *cachedBrain) metaPath(key string) string {
+	return filepath.Join(b.metaDir(), encodeBrainCacheKey(key)+".json")
+}
+
+func (b *cachedBrain) outboxPath(key string) string {
+	return filepath.Join(b.outboxDir(), encodeBrainCacheKey(key)+".json")
+}
+func (b *cachedBrain) budgetPath() string { return filepath.Join(b.cfg.Directory, "write-budget.json") }
+
+func encodeBrainCacheKey(key string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(key))
+}
+
+func checksumBytes(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func (b *cachedBrain) writePayload(key string, payload []byte) error {
+	return writeAtomicFile(b.payloadPath(key), payload, 0600)
+}
+
+func (b *cachedBrain) writeMeta(meta brainCacheMeta) error {
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeAtomicFile(b.metaPath(meta.Key), data, 0600)
+}
+
+func (b *cachedBrain) readMeta(key string) (brainCacheMeta, bool, error) {
+	meta, err := b.readMetaFile(b.metaPath(key))
+	if errors.Is(err, os.ErrNotExist) {
+		return brainCacheMeta{}, false, nil
+	}
+	return meta, err == nil, err
+}
+
+func (b *cachedBrain) readMetaFile(path string) (brainCacheMeta, error) {
+	var meta brainCacheMeta
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return meta, err
+	}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return meta, err
+	}
+	if meta.Format != brainCacheFormat {
+		return meta, fmt.Errorf("unsupported brain cache datum format %q for %s", meta.Format, meta.Key)
+	}
+	return meta, nil
+}
+
+func (b *cachedBrain) writeControl() error {
+	data, err := json.MarshalIndent(b.control, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeAtomicFile(b.controlPath(), data, 0600)
+}
+
+func (b *cachedBrain) writeOutbox(entry brainCacheOutboxEntry) error {
+	data, err := json.MarshalIndent(entry, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeAtomicFile(b.outboxPath(entry.Key), data, 0600)
+}
+
+func (b *cachedBrain) removeOutbox(key string) error {
+	err := os.Remove(b.outboxPath(key))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func (b *cachedBrain) checkCloudWriteBudgetLocked() error {
+	if b.policy.WriteBudgetPerDay <= 0 {
+		return nil
+	}
+	budget, err := b.readWriteBudget()
+	if err != nil {
+		return err
+	}
+	if budget.Writes >= b.policy.WriteBudgetPerDay {
+		return fmt.Errorf("cloud brain write budget exhausted (%d/%d for %s); pending memories remain queued",
+			budget.Writes, b.policy.WriteBudgetPerDay, budget.Date)
+	}
+	return nil
+}
+
+func (b *cachedBrain) recordCloudWriteLocked() error {
+	if b.policy.WriteBudgetPerDay <= 0 {
+		return nil
+	}
+	budget, err := b.readWriteBudget()
+	if err != nil {
+		return err
+	}
+	budget.Writes++
+	return b.writeWriteBudget(budget)
+}
+
+func (b *cachedBrain) readWriteBudget() (brainCacheWriteBudget, error) {
+	today := time.Now().UTC().Format("2006-01-02")
+	budget := brainCacheWriteBudget{Date: today}
+	data, err := os.ReadFile(b.budgetPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return budget, nil
+	}
+	if err != nil {
+		return brainCacheWriteBudget{}, err
+	}
+	if err := json.Unmarshal(data, &budget); err != nil {
+		return brainCacheWriteBudget{}, err
+	}
+	if budget.Date != today {
+		return brainCacheWriteBudget{Date: today}, nil
+	}
+	return budget, nil
+}
+
+func (b *cachedBrain) writeWriteBudget(budget brainCacheWriteBudget) error {
+	data, err := json.MarshalIndent(budget, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeAtomicFile(b.budgetPath(), data, 0600)
+}
+
+func writeAtomicFile(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
+}

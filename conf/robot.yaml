@@ -74,6 +74,8 @@ LocalPort: {{ env "GOPHER_PORT" | default "0" }}
 
 ## Possibly modified by GOPHER_HTTP_DEBUG, see below
 {{- $loglevel := env "GOPHER_LOGLEVEL" | default "info" }}
+{{- $statedir := env "GOPHER_STATE_DIRECTORY" | default "state" }}
+{{- $defcache := printf "%s/brain-cache" $statedir }}
 
 ## Enable log level debug messages for localhost http JSON requests and replies
 ## NOTE: For low-level debugging only - no scrubbing of secrets is performed!
@@ -94,6 +96,9 @@ HttpDebug: true
 PrimaryProtocol: {{ $proto }}
 DefaultProtocol: {{ env "GOPHER_DEFAULT_PROTOCOL" | default $proto }}
 Brain: {{ $brain }}
+BrainCache:
+  Directory: {{ env "GOPHER_BRAIN_CACHE_DIRECTORY" | default $defcache }}
+  RequireRemoteCleanOnStartup: false
 LogDest: {{ $logdest }}
 LogLevel: {{ $loglevel }}
 

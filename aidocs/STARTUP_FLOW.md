@@ -127,7 +127,8 @@ CLI handling is intentionally split so help and obvious usage failures do not fo
 4. Encryption-only commands (`encrypt`, `decrypt`, `uuid`) initialize encryption directly from `GOPHER_ENCRYPTION_KEY` plus `binary-encrypted-key[.<environment>]`.
 5. Config-only commands (`dump`, `validate`, `gentotp`) use a lightweight pre-connect config load when needed, but do not initialize a brain provider.
 6. Memory commands (`fetch`, `store`, `list`, `delete`) use the lightweight config load plus the configured brain provider object directly, then call provider shutdown. They do not start `runBrain()`.
-7. `genkey` is a no-init CLI command after private environment loading; it uses `GOPHER_ENCRYPTION_KEY` directly to generate an encrypted `binary-encrypted-key[.<environment>]` payload without starting brain, connectors, or plugins.
+7. Brain migration commands (`pull-brain`, `restore-brain`) use the lightweight config load and remote brain backend directly. They are the only v2 brain import/export compatibility paths.
+8. `genkey` is a no-init CLI command after private environment loading; it uses `GOPHER_ENCRYPTION_KEY` directly to generate an encrypted `binary-encrypted-key[.<environment>]` payload without starting brain, connectors, or plugins.
 
 Operational note:
 
@@ -290,6 +291,62 @@ Provider-specific configuration is loaded by selected provider name:
 `BrainConfig`, `HistoryConfig`, and `QueueConfig` are invalid top-level keys in `robot.yaml`.
 
 If a selected provider file is missing, or missing its required top-level key, startup/reload config load fails.
+
+### Brain Cache Startup Contract
+
+`Brain` selects the local-only or remote provider. `BrainCache` is a top-level
+engine-owned config section:
+
+```yaml
+BrainCache:
+  Directory: state/brain-cache
+  RequireRemoteCleanOnStartup: false
+```
+
+The default directory follows `GOPHER_STATE_DIRECTORY` through
+`state/brain-cache` unless `GOPHER_BRAIN_CACHE_DIRECTORY` is set. Provider
+credentials and provider-sensitive sync settings remain in
+`conf/brains/<Brain>.yaml`; the cache asks the selected remote backend for its
+`BrainSyncPolicy`.
+
+Startup initializes the configured brain in `initBot()` before instance-lock
+acquisition and before connector/module/plugin work:
+
+- `Brain: mem` remains an in-memory `SimpleBrain` provider for tests/demo use.
+- `Brain: file` opens the engine-owned local cache as the source of truth. It
+  does not warn merely because the robot is local-only.
+- Remote brains (`cloudflare`, `dynamo`, `firestore`) open the local cache as
+  the engine-facing brain and use the provider only as a v3 sync backend.
+
+For remote brains, normal startup behavior is:
+
+1. If the local cache exists and is complete, verify its checkpoint with one
+   remote point-read. Do not scan or hydrate from cloud on the fast path.
+2. If no local cache exists, hydrate from the remote only when every remote
+   record is v3-compatible, then continue startup cleanly.
+3. If the remote contains v2/unversioned records and no usable local v3 cache
+   exists, fail cleanly with instructions to run `gopherbot pull-brain`.
+4. If a complete local cache exists but the checkpoint no longer matches the
+   remote, fail cleanly with instructions to run `gopherbot pull-brain`.
+
+Runtime memory reads, lists, stores, and deletes go through the local cache.
+Cloud writes are queued to a durable local outbox and written by a sync worker
+using the provider's coalesce window, minimum write interval, and daily write
+budget. The brain instance lock key is synced immediately because it protects
+single-robot ownership.
+
+V2 brain compatibility is deliberately CLI-only:
+
+- `gopherbot pull-brain` imports a v2/v3 remote brain, or legacy file brain,
+  into the local v3 cache without modifying cloud by default.
+- `gopherbot pull-brain -upgrade-cloud-v3` additionally writes upgraded v3
+  records back to the cloud, subject to provider/CLI write budget.
+- `gopherbot restore-brain -remote-format v3` writes the local cache to the
+  configured remote in v3 format.
+- `gopherbot restore-brain -remote-format v2` writes v2-compatible remote data
+  for rollback to v2 code.
+- `restore-brain -force` also removes remote keys not present in the local
+  cache.
 
 ### Identity Provider Registry
 

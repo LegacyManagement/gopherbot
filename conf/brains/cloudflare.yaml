@@ -1,5 +1,8 @@
 BrainConfig:
   AccountID: "youraccountID"
   NamespaceID: "yournamespaceID"
-  MaxAgeHours: 7
   APIToken: "replace with encrypted value"
+  CloudWriteBudgetPerDay: 900
+  CloudWriteMinIntervalMillis: 1100
+  CoalesceWindowMillis: 2000
+  FlushOnShutdownMaxMillis: 10000

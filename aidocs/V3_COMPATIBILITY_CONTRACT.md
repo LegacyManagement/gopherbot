@@ -12,6 +12,11 @@ This document defines compatibility priorities for v3 work.
    - Admin users, groups, authorization, and policy checks stay username-authoritative.
 3. Brain compatibility is prioritized.
    - Persistent brain data compatibility should be preserved whenever feasible.
+   - V2 persistent brain compatibility may be provided through explicit CLI
+     migration/export commands rather than normal runtime compatibility
+     branches.
+   - The v3 runtime may require v3-formatted cloud brain records when the
+     migration path is documented in `UPGRADING-v3.md`.
 
 ## Explicit Non-Guarantee
 

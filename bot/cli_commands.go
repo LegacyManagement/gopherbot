@@ -204,6 +204,42 @@ func cliCommands() []cliCommandSpec {
 			RunsBeforeInit: true,
 		},
 		{
+			Name:         "pull-brain",
+			SummaryUsage: "pull-brain [options]",
+			Summary:      "pull remote or legacy brain memories into the local cache",
+			HelpLines: []string{
+				"Usage: gopherbot pull-brain [options]",
+				"",
+				"Imports remote brain memories into the local v3 cache.",
+				"By default it does not modify the remote brain.",
+				"",
+				"Options:",
+				"  -dry-run             report planned work without writing",
+				"  -force               replace existing local cache",
+				"  -upgrade-cloud-v3    also write upgraded v3 records to cloud",
+				"  -budget <n>          maximum cloud writes for this run",
+			},
+			RunsBeforeInit: true,
+		},
+		{
+			Name:         "restore-brain",
+			SummaryUsage: "restore-brain -remote-format <v2|v3> [options]",
+			Summary:      "write the local brain cache to a remote provider",
+			HelpLines: []string{
+				"Usage: gopherbot restore-brain -remote-format <v2|v3> [options]",
+				"",
+				"Writes the local v3 cache back to the configured remote brain.",
+				"Use v3 before starting the v3 runtime; use v2 for rollback export.",
+				"",
+				"Options:",
+				"  -remote-format v2|v3  remote format to write",
+				"  -dry-run              report planned work without writing",
+				"  -force                allow initializing/replacing remote state",
+				"  -budget <n>           maximum cloud writes for this run",
+			},
+			RunsBeforeInit: true,
+		},
+		{
 			Name:         "run",
 			SummaryUsage: "run",
 			Summary:      "run the robot (same as no subcommand)",
@@ -382,6 +418,20 @@ func processCLI(command string, args []string) int {
 	fetchFlags := newCLIFlagSet("fetch")
 	fetchFlags.BoolVar(&encodeBase64, "base64", false, "encode memory as base64")
 	fetchFlags.BoolVar(&encodeBase64, "b", false, "")
+
+	pullBrainFlags := newCLIFlagSet("pull-brain")
+	var pullBrainOpts brainPullOptions
+	pullBrainFlags.BoolVar(&pullBrainOpts.force, "force", false, "replace existing local cache")
+	pullBrainFlags.BoolVar(&pullBrainOpts.dryRun, "dry-run", false, "report planned work without writing")
+	pullBrainFlags.BoolVar(&pullBrainOpts.upgradeCloudV3, "upgrade-cloud-v3", false, "write upgraded v3 records to cloud")
+	pullBrainFlags.IntVar(&pullBrainOpts.budget, "budget", 0, "maximum cloud writes")
+
+	restoreBrainFlags := newCLIFlagSet("restore-brain")
+	var restoreBrainOpts brainRestoreOptions
+	restoreBrainFlags.BoolVar(&restoreBrainOpts.force, "force", false, "allow initializing/replacing remote state")
+	restoreBrainFlags.BoolVar(&restoreBrainOpts.dryRun, "dry-run", false, "report planned work without writing")
+	restoreBrainFlags.StringVar(&restoreBrainOpts.remoteFormat, "remote-format", "", "remote format to write: v2 or v3")
+	restoreBrainFlags.IntVar(&restoreBrainOpts.budget, "budget", 0, "maximum cloud writes")
 
 	switch command {
 	case "help":
@@ -604,6 +654,46 @@ func processCLI(command string, args []string) int {
 		initCLIBrainProvider()
 		defer shutdownCLIBrainProvider()
 		cliDelete(args[0])
+	case "pull-brain":
+		if err := pullBrainFlags.Parse(args); err != nil {
+			if err == flag.ErrHelp {
+				printCLICommandHelp(command)
+				return 0
+			}
+			fmt.Printf("Error: %v\n\n", err)
+			printCLICommandHelp(command)
+			return 2
+		}
+		if len(pullBrainFlags.Args()) > 0 {
+			fmt.Println("Error: pull-brain does not take positional arguments")
+			fmt.Println()
+			printCLICommandHelp(command)
+			return 2
+		}
+		if err := cliPullBrain(pullBrainOpts); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return 1
+		}
+	case "restore-brain":
+		if err := restoreBrainFlags.Parse(args); err != nil {
+			if err == flag.ErrHelp {
+				printCLICommandHelp(command)
+				return 0
+			}
+			fmt.Printf("Error: %v\n\n", err)
+			printCLICommandHelp(command)
+			return 2
+		}
+		if len(restoreBrainFlags.Args()) > 0 {
+			fmt.Println("Error: restore-brain does not take positional arguments")
+			fmt.Println()
+			printCLICommandHelp(command)
+			return 2
+		}
+		if err := cliRestoreBrain(restoreBrainOpts); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return 1
+		}
 	case "validate":
 		if len(args) != 1 {
 			fmt.Println("Error: validate requires a path to a robot repository")
@@ -697,21 +787,12 @@ func initCLIBrainProvider() {
 	if interfaces.brain != nil {
 		return
 	}
-	if len(currentCfg.brainProvider) > 0 {
-		registration, ok := brainProviderRegistration(currentCfg.brainProvider)
-		if !ok {
-			Log(robot.Fatal, "No provider registered for brain: \"%s\"", currentCfg.brainProvider)
-		}
-		interfaces.brain = registration.Provider(handle)
-		Log(robot.Info, "Initialized brain provider '%s'", currentCfg.brainProvider)
-		return
+	brain, providerName, err := initializeConfiguredBrain()
+	if err != nil {
+		Log(robot.Fatal, "Initializing brain provider '%s': %v", providerName, err)
 	}
-	registration, ok := brainProviderRegistration("mem")
-	if !ok {
-		Log(robot.Fatal, "No provider registered for default brain: \"mem\"")
-	}
-	interfaces.brain = registration.Provider(handle)
-	Log(robot.Error, "No brain configured, falling back to default 'mem' brain - no memories will persist")
+	interfaces.brain = brain
+	Log(robot.Info, "Initialized brain provider '%s'", providerName)
 }
 
 func shutdownCLIBrainProvider() {

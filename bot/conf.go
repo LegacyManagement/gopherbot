@@ -109,6 +109,7 @@ type ConfigLoader struct {
 	UserRoster           []UserRosterEntry                 `yaml:"UserRoster"`           // Global user directory entries; UserID accepted for legacy compatibility parsing
 	ChannelRoster        []ChannelInfo                     `yaml:"ChannelRoster"`        // List of channels mapping names to IDs
 	Brain                string                            `yaml:"Brain"`                // Type of Brain to use
+	BrainCache           BrainCacheConfig                  `yaml:"BrainCache"`           // Engine-owned local brain cache settings
 	EncryptionKey        string                            `yaml:"EncryptionKey"`        // Used to decrypt the "real" encryption key
 	HistoryProvider      string                            `yaml:"HistoryProvider"`      // Name of provider to use for storing and retrieving job/plugin histories
 	QueueProviders       []string                          `yaml:"QueueProviders"`       // Optional queue providers to initialize after startup
@@ -443,6 +444,7 @@ func loadConfig(preConnect bool) error {
 		var crval []ChannelInfo
 		var tval map[string]TaskSettings
 		var identityVal map[string]IdentityProviderConfig
+		var brainCacheVal BrainCacheConfig
 		var stval []ScheduledTask
 		var mailval botMailer
 		var boolval bool
@@ -461,6 +463,8 @@ func loadConfig(preConnect bool) error {
 			val = &urval
 		case "ChannelRoster":
 			val = &crval
+		case "BrainCache":
+			val = &brainCacheVal
 		case "LocalPort":
 			val = &intval
 		case "ExternalJobs", "ExternalPlugins", "ExternalTasks", "GoJobs", "GoPlugins", "GoTasks", "NameSpaces", "ParameterSets":
@@ -507,6 +511,8 @@ func loadConfig(preConnect bool) error {
 			newconfig.DefaultProtocol = *(val.(*string))
 		case "Brain":
 			newconfig.Brain = *(val.(*string))
+		case "BrainCache":
+			newconfig.BrainCache = *(val.(*BrainCacheConfig))
 		case "EncryptionKey":
 			newconfig.EncryptionKey = *(val.(*string))
 		case "HistoryProvider":
@@ -675,6 +681,7 @@ func loadConfig(preConnect bool) error {
 	} else {
 		brainConfig = nil
 	}
+	processed.brainCache = defaultBrainCacheConfig(newconfig.BrainCache)
 	if newconfig.HistoryProvider == "" {
 		newconfig.HistoryProvider = "mem"
 	}
