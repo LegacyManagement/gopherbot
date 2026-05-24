@@ -4,8 +4,13 @@ This file tracks cross-cutting architecture/documentation TODO items that do not
 
 ## Open TODOs
 
-- [ ] Investigate "assignment copies lock value" from "go vet ./bot"
-- [ ] Investigate and fix integration test failures:
+- [x] Investigate and fix "assignment copies lock value" from "go vet ./bot":
+  copy-lock vet reports were cleaned up by using pointer JSON marshalers for
+  ephemeral memories and thread subscriptions, avoiding test save/restore copies
+  of `sync.RWMutex` and `sync.Once`, and capturing the subscription save count
+  before releasing the live subscription map lock. The same vet pass also
+  cleaned up unkeyed `robot.AttrRet` literals so `go vet ./bot` is quiet.
+- [x] Investigate and fix integration test failures:
 ```
 TestBotName: FAIL - 2 test(s) failed
 TestHiddenPSAndGetPipelineLog: FAIL - 1 test(s) failed

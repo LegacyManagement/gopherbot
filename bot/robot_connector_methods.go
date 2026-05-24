@@ -76,18 +76,18 @@ func (r Robot) GetUserAttribute(u, a string) *robot.AttrRet {
 			w := getLockedWorker(r.tid)
 			w.Unlock()
 			w.Log(robot.Error, "empty attribute in call to GetUserAttribute")
-			return &robot.AttrRet{"", robot.AttributeNotFound}
+			return &robot.AttrRet{RetVal: robot.AttributeNotFound}
 		}
 		if len(attr) > 0 {
-			return &robot.AttrRet{attr, robot.Ok}
+			return &robot.AttrRet{Attribute: attr, RetVal: robot.Ok}
 		}
 	}
 	conn := getConnectorForProtocol(protocol)
 	if conn == nil {
-		return &robot.AttrRet{"", robot.Failed}
+		return &robot.AttrRet{RetVal: robot.Failed}
 	}
 	attr, ret := conn.GetProtocolUserAttribute(user, a)
-	return &robot.AttrRet{attr, ret}
+	return &robot.AttrRet{Attribute: attr, RetVal: ret}
 }
 
 // see robot/robot.go
@@ -102,9 +102,9 @@ func (r Robot) GetSenderAttribute(a string) *robot.AttrRet {
 	dui, _ = r.maps.user[r.User]
 	switch a {
 	case "name", "username", "handle", "user":
-		return &robot.AttrRet{r.User, robot.Ok}
+		return &robot.AttrRet{Attribute: r.User, RetVal: robot.Ok}
 	case "id", "internalid", "protocolid":
-		return &robot.AttrRet{r.ProtocolUser, robot.Ok}
+		return &robot.AttrRet{Attribute: r.ProtocolUser, RetVal: robot.Ok}
 	}
 	if pui != nil || dui != nil {
 		var attr string
@@ -143,10 +143,10 @@ func (r Robot) GetSenderAttribute(a string) *robot.AttrRet {
 			w := getLockedWorker(r.tid)
 			w.Unlock()
 			w.Log(robot.Error, "empty attribute in call to GetUserAttribute")
-			return &robot.AttrRet{"", robot.AttributeNotFound}
+			return &robot.AttrRet{RetVal: robot.AttributeNotFound}
 		}
 		if len(attr) > 0 {
-			return &robot.AttrRet{attr, robot.Ok}
+			return &robot.AttrRet{Attribute: attr, RetVal: robot.Ok}
 		}
 	}
 	user := r.ProtocolUser
@@ -155,8 +155,8 @@ func (r Robot) GetSenderAttribute(a string) *robot.AttrRet {
 	}
 	conn := getConnectorForProtocol(protocol)
 	if conn == nil {
-		return &robot.AttrRet{"", robot.Failed}
+		return &robot.AttrRet{RetVal: robot.Failed}
 	}
 	attr, ret := conn.GetProtocolUserAttribute(user, a)
-	return &robot.AttrRet{attr, ret}
+	return &robot.AttrRet{Attribute: attr, RetVal: ret}
 }

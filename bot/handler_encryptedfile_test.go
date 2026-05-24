@@ -6,23 +6,39 @@ import (
 	"testing"
 )
 
+func setCryptKeyForEncryptedFileTest(t *testing.T, key []byte) {
+	t.Helper()
+	cryptKey.Lock()
+	oldKey := append([]byte(nil), cryptKey.key...)
+	oldInitialized := cryptKey.initialized
+	oldInitializing := cryptKey.initializing
+	cryptKey.key = append([]byte(nil), key...)
+	cryptKey.initialized = true
+	cryptKey.initializing = false
+	cryptKey.Unlock()
+	t.Cleanup(func() {
+		cryptKey.Lock()
+		cryptKey.key = oldKey
+		cryptKey.initialized = oldInitialized
+		cryptKey.initializing = oldInitializing
+		cryptKey.Unlock()
+	})
+}
+
 func TestHandlerReadEncryptedFileUsesConfigRoot(t *testing.T) {
 	oldConfigFull := configFull
 	oldInstallPath := installPath
-	oldCrypt := cryptKey
 	configFull = t.TempDir()
 	installPath = t.TempDir()
-	cryptKey.key = []byte("12345678901234567890123456789012")
-	cryptKey.initialized = true
-	cryptKey.initializing = false
+	testKey := []byte("12345678901234567890123456789012")
+	setCryptKeyForEncryptedFileTest(t, testKey)
 	t.Cleanup(func() {
 		configFull = oldConfigFull
 		installPath = oldInstallPath
-		cryptKey = oldCrypt
 	})
 
 	plaintext := []byte("{\"type\":\"service_account\"}\n")
-	ciphertext, err := encrypt(plaintext, cryptKey.key)
+	ciphertext, err := encrypt(plaintext, testKey)
 	if err != nil {
 		t.Fatalf("encrypt() error: %v", err)
 	}
@@ -42,20 +58,17 @@ func TestHandlerReadEncryptedFileUsesConfigRoot(t *testing.T) {
 func TestHandlerReadEncryptedFileFallsBackToInstallRoot(t *testing.T) {
 	oldConfigFull := configFull
 	oldInstallPath := installPath
-	oldCrypt := cryptKey
 	configFull = t.TempDir()
 	installPath = t.TempDir()
-	cryptKey.key = []byte("12345678901234567890123456789012")
-	cryptKey.initialized = true
-	cryptKey.initializing = false
+	testKey := []byte("12345678901234567890123456789012")
+	setCryptKeyForEncryptedFileTest(t, testKey)
 	t.Cleanup(func() {
 		configFull = oldConfigFull
 		installPath = oldInstallPath
-		cryptKey = oldCrypt
 	})
 
 	plaintext := []byte("install-root-secret")
-	ciphertext, err := encrypt(plaintext, cryptKey.key)
+	ciphertext, err := encrypt(plaintext, testKey)
 	if err != nil {
 		t.Fatalf("encrypt() error: %v", err)
 	}
@@ -75,16 +88,12 @@ func TestHandlerReadEncryptedFileFallsBackToInstallRoot(t *testing.T) {
 func TestHandlerReadEncryptedFileRejectsTraversalOutsideRoots(t *testing.T) {
 	oldConfigFull := configFull
 	oldInstallPath := installPath
-	oldCrypt := cryptKey
 	configFull = t.TempDir()
 	installPath = t.TempDir()
-	cryptKey.key = []byte("12345678901234567890123456789012")
-	cryptKey.initialized = true
-	cryptKey.initializing = false
+	setCryptKeyForEncryptedFileTest(t, []byte("12345678901234567890123456789012"))
 	t.Cleanup(func() {
 		configFull = oldConfigFull
 		installPath = oldInstallPath
-		cryptKey = oldCrypt
 	})
 
 	outsideDir := t.TempDir()

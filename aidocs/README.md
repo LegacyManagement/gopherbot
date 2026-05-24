@@ -22,6 +22,7 @@ Use these first for current behavior:
 - `aidocs/SCHEDULER_FLOW.md`
 - `aidocs/JobQueues.md`
 - `aidocs/EXECUTION_SECURITY_MODEL.md`
+- `aidocs/ELEVATION_MODEL.md`
 - `aidocs/macos-privsep.md`
 - `aidocs/setup-style-guide.md`
 - `aidocs/GOOGLECHAT_CONNECTOR.md`

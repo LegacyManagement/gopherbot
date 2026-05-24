@@ -33,7 +33,7 @@ var ephemeralMemories = eMemories{
 }
 
 // the lock should be held on entry and released after return
-func (em eMemories) MarshalJSON() ([]byte, error) {
+func (em *eMemories) MarshalJSON() ([]byte, error) {
 	tempMap := make(map[string]ephemeralMemory)
 	for k, v := range em.m {
 		// No need to thrash the brain with lastMsg memories
@@ -108,7 +108,7 @@ func saveEphemeralMemories() {
 		ephemeralMemories.Lock()
 		storedEphemeralMemories.m = ephemeralMemories.m
 		ephemeralMemories.dirty = false
-		ret := updateDatum(ephemeralMemKey, sm_tok, storedEphemeralMemories)
+		ret := updateDatum(ephemeralMemKey, sm_tok, &storedEphemeralMemories)
 		// NOTE: Hold the lock until after serializing - the
 		// storedEphmemeralMemories assignment doesn't copy.
 		// NOTE also: getting the len counts as a read.

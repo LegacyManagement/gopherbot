@@ -334,7 +334,7 @@ func (r Robot) GetBotAttribute(a string) *robot.AttrRet {
 		w.Log(robot.Error, "invalid attribute in call to GetBotAttribute: '%s'", a)
 		ret = robot.AttributeNotFound
 	}
-	return &robot.AttrRet{attr, ret}
+	return &robot.AttrRet{Attribute: attr, RetVal: ret}
 }
 
 // see robot/robot.go

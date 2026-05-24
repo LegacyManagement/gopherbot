@@ -186,6 +186,9 @@ Practical rule for engine APIs:
 
 These apply to `bot/handler.go`, `bot/available.go`, `bot/authorize.go`, `bot/elevate.go`, and `bot/run_pipelines.go`.
 
+For detailed elevation intent, callback contract, provider behavior, and known
+coverage gaps, see `aidocs/ELEVATION_MODEL.md`.
+
 ### Pre-pipeline filters
 
 - `IgnoreUsers` and `IgnoreUnlistedUsers` are checked in `handler.IncomingMessage` before any worker is created. They must remain pre-pipeline filters. Never move this logic into dispatch or pipeline code.

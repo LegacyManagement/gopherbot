@@ -136,7 +136,7 @@ func TestEnsurePipelineRPCGoInitializedUsesChildEnv(t *testing.T) {
 	homePath = ""
 	installPath = ""
 	configFull = ""
-	pipelineRPCGoInitOnce = sync.Once{}
+	pipelineRPCGoInitOnce = &sync.Once{}
 	pipelineRPCGoInitErr = nil
 	t.Cleanup(func() {
 		homePath = oldHomePath

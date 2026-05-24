@@ -10,6 +10,8 @@ Entries cite files like `main.go` and symbols like `Start` in `bot/start.go` for
 - High-level v3 goals (project-level): `GOALS_v3.md`
 - v3 compatibility priorities and migration policy: `aidocs/V3_COMPATIBILITY_CONTRACT.md`
 - Execution/threading/security model: `aidocs/EXECUTION_SECURITY_MODEL.md`
+- Elevation intent, engine flow, callback contract, and provider notes:
+  `aidocs/ELEVATION_MODEL.md`.
 - macOS privilege-separation one-shot child process plan: `aidocs/macos-privsep.md`.
 - Setup UX/style conventions for guided onboarding flows: `aidocs/setup-style-guide.md`
 - Interpreter notes: `aidocs/INTERPRETERS.md`.

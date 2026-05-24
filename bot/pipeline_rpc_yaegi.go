@@ -37,7 +37,7 @@ type pipelineRPCGoGetConfigResponse struct {
 }
 
 var (
-	pipelineRPCGoInitOnce sync.Once
+	pipelineRPCGoInitOnce = &sync.Once{}
 	pipelineRPCGoInitErr  error
 )
 

@@ -31,7 +31,7 @@ func TestSubscriptionsMarshalProtocolKeyFormat(t *testing.T) {
 			},
 		},
 	}
-	data, err := json.Marshal(s)
+	data, err := json.Marshal(&s)
 	if err != nil {
 		t.Fatalf("json.Marshal subscriptions failed: %v", err)
 	}

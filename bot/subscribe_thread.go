@@ -17,12 +17,6 @@ to the plugin with a command of "_subscribed". This is meant to replace message
 matchers that match all messages.
 */
 
-/*
-NOTE on Marshalling, Unmarshalling and locks:
-The Go linter is complaining about copying locks, but in reality we're not using the lock
-that's being copied anyway.
-*/
-
 const subscriptionMemKey = "bot:_subscriptions"
 
 // Plugins can subscribe to a thread in a channel. This struct is used as the
@@ -54,7 +48,7 @@ var subscriptions = tSubs{
 }
 
 // the lock should be held on entry and released after return
-func (s tSubs) MarshalJSON() ([]byte, error) {
+func (s *tSubs) MarshalJSON() ([]byte, error) {
 	tempMap := make(map[string]subscriber)
 	for k, v := range s.m {
 		keyString := fmt.Sprintf("%s{|}%s{|}%s", k.protocol, k.channel, k.thread)
@@ -125,12 +119,13 @@ func saveSubscriptions() {
 		subscriptions.Lock()
 		storedSubscriptions.m = subscriptions.m
 		subscriptions.dirty = false
-		ret := updateDatum(subscriptionMemKey, ss_tok, storedSubscriptions)
+		ret := updateDatum(subscriptionMemKey, ss_tok, &storedSubscriptions)
 		// NOTE: Hold the lock until after serializing - the
 		// storedSubscriptions assignment doesn't copy.
+		stored := len(storedSubscriptions.m)
 		subscriptions.Unlock()
 		if ret == robot.Ok {
-			Log(robot.Debug, "Successfully saved '%d' long-term subscription memories", len(storedSubscriptions.m))
+			Log(robot.Debug, "Successfully saved '%d' long-term subscription memories", stored)
 		} else {
 			Log(robot.Error, "Error '%s' updating long-term subscription memory", ret)
 		}

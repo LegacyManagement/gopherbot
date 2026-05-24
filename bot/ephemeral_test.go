@@ -51,7 +51,7 @@ func TestEphemeralMemoriesMarshalIncludesProtocolField(t *testing.T) {
 		},
 	}
 
-	data, err := json.Marshal(memories)
+	data, err := json.Marshal(&memories)
 	if err != nil {
 		t.Fatalf("json.Marshal() error: %v", err)
 	}
