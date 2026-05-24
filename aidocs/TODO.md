@@ -18,7 +18,7 @@ TestPipelineFailureAlertIncludesTracebackExcerpt: FAIL - 1 test(s) failed
 TestPipelineTimeoutWarnAndKillAlerts: FAIL - 1 test(s) failed
 TestPrompting: FAIL - 3 test(s) failed
 ```
-- [ ] Add new builtin-userapproval elevator that takes a configured list of
+- [x] Add new builtin-userapproval elevator that takes a configured list of
   users who can approve an action. Configuration should have FallbackApprovers,
   the list of users who can approve if a specific plugin isn't listed, and
   also `PluginApprovers.<pluginname>` which supercedes FallbackApprovers.
@@ -30,6 +30,9 @@ PluginApprovers:
 ```
   NOTE: a built-in can examine r.pipeName to get the name of the
   pipeline/plugin to check.
+  Implemented as `builtin-userapproval`: the requester chooses one eligible
+  approver from a lowercase-letter menu, then that selected approver receives a
+  yes/no DM prompt. Self-approval is excluded.
 - [x] HIGH PRIORITY: Research Lua/JS interpreter parity for command context
   environment variables used by legacy external scripts.
   Floyd WireGuard Lua spike on May 20, 2026 found that a privileged built-in Lua

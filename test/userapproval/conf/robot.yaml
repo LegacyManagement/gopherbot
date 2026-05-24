@@ -1,0 +1,28 @@
+AdminContact: "Joe User, <user@example.org>"
+DefaultChannels: [ "general" ]
+DefaultJobChannel: general
+AdminUsers: [ "alice" ]
+Alias: ";"
+PrimaryProtocol: {{ env "GOPHER_PROTOCOL" | default "test" }}
+
+BotInfo:
+  UserName: bender
+  FullName: Bender Rodriguez
+UserRoster:
+- UserName: "alice"
+  UserID: "u0001"
+- UserName: "bob"
+  UserID: "u0002"
+- UserName: "carol"
+  UserID: "u0003"
+- UserName: "david"
+  UserID: "u0004"
+
+LocalPort: 0
+ExternalPlugins:
+  "gosec":
+    Path: plugins/test/gofull.go
+
+WorkSpace: workspace
+Brain: mem
+DefaultElevator: builtin-userapproval

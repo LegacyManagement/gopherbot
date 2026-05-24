@@ -1,0 +1,8 @@
+---
+ReplyMatchers:
+- Label: approvalChoice
+  Regex: '[a-z]'
+Config:
+  FallbackApprovers: [ david ]
+  PluginApprovers:
+    gosec: [ bob, carol ]

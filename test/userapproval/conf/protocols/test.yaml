@@ -1,0 +1,14 @@
+ProtocolConfig:
+  StartChannel: general
+  StartUser: alice
+  Channels:
+  - general
+  Users:
+  - Name: "alice"
+    InternalID: "u0001"
+  - Name: "bob"
+    InternalID: "u0002"
+  - Name: "carol"
+    InternalID: "u0003"
+  - Name: "david"
+    InternalID: "u0004"

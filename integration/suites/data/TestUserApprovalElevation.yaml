@@ -1,0 +1,45 @@
+name: TestUserApprovalElevation
+metadata:
+  subsystems:
+    - authz
+    - elevation
+    - prompting
+  tags:
+    - user-approval
+  runtimes:
+    - go
+  tier: focused
+config_dir: test/userapproval
+log_name: bottest.log
+flow:
+  - name: request-elevation
+    send:
+      user: alice
+      channel: general
+      text: ;go-sec-elevated
+  - name: requester-chooses-approver
+    receive:
+      user: alice
+      channel: general
+      text_pattern: "This command requires approval for 'gosec'\\. Select one approver: a\\) bob, b\\) carol"
+  - name: select-carol
+    send:
+      user: alice
+      channel: general
+      text: b
+  - name: carol-approval-prompt
+    receive:
+      user: carol
+      text_pattern: "alice requests approval to run elevated action for 'gosec'\\. Reply yes to approve or no to deny\\."
+  - name: carol-approves
+    send:
+      user: carol
+      text: "yes"
+  - name: approval-granted
+    receive:
+      channel: general
+      text_pattern: "Approval granted by carol"
+  - name: protected-command-runs
+    receive:
+      channel: general
+      text_pattern: "SECURITY CHECK: secelevated"

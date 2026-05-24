@@ -1,0 +1,11 @@
+---
+ReplyMatchers:
+- Label: approvalChoice
+  Regex: '[a-z]'
+Config:
+  # Used when PluginApprovers does not list the current pipeline/plugin name.
+  FallbackApprovers: []
+  # Per-plugin approvers supersede FallbackApprovers.
+  # PluginApprovers:
+  #   wireguard: [ alice, bob, david ]
+  PluginApprovers: {}

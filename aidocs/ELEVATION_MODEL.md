@@ -163,6 +163,8 @@ Current shipped behavior:
   It supports `TimeoutType: idle` and `TimeoutType: absolute`.
 - Duo uses the same general timeout model, plus Duo preauth/auth flow and
   remembered device/method preferences.
+- `builtin-userapproval` ignores timeout reuse and asks the requester to select
+  one configured human approver for each elevation attempt.
 
 ## Extension API
 
@@ -215,6 +217,38 @@ Behavior:
 - The sample config lives in `conf/plugins/duo.yaml.sample` and is intended to
   be copied into a custom robot config when enabled.
 
+### `builtin-userapproval`
+
+Registered in `bot/builtin_userapproval.go` as `builtin-userapproval`.
+
+Behavior:
+
+- `_elevate <immediate>` loads `Config.FallbackApprovers` and
+  `Config.PluginApprovers`.
+- The current pipeline/plugin name comes from `r.pipeName`.
+- `PluginApprovers.<pipeName>` supersedes `FallbackApprovers` when present.
+- The requester is excluded from the eligible approver list, so users cannot
+  approve their own elevation.
+- The requester receives a lowercase-letter menu such as
+  `a) david, b) bob, c) alice` and must reply with a single lowercase letter
+  matched by the elevator's `approvalChoice` reply matcher.
+- The selected approver receives a DM yes/no prompt. `yes`/`y` approves and
+  returns `robot.Success`; `no`/`n`, timeout, invalid requester choice, or
+  missing eligible approvers fail elevation.
+- The implementation supports at most 26 eligible approvers per effective list.
+
+Config shape:
+
+```yaml
+ReplyMatchers:
+- Label: approvalChoice
+  Regex: '[a-z]'
+Config:
+  FallbackApprovers: [ david, alice ]
+  PluginApprovers:
+    wireguard: [ alice, bob, david ]
+```
+
 ## Interactive Jobs
 
 Interactive jobs started through the job command path run `jobSecurityCheck`
@@ -240,6 +274,8 @@ Current test coverage exercises:
 - `Robot.Elevate(true)` API plumbing across runtimes.
 - Failure handling when the TOTP elevator prompts but cannot validate because
   the test user lacks a configured secret.
+- Successful `builtin-userapproval` requester-choice and selected-approver
+  yes/no approval flow.
 - Return-value handling that treats non-success as failure.
 
 Known gap:
