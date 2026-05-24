@@ -188,7 +188,7 @@ func TestRemoteBrainCacheWriteBudgetLeavesPendingOutbox(t *testing.T) {
 		t.Fatalf("Store first: %v", err)
 	}
 	brain.mu.Lock()
-	err = brain.syncKeyLocked("first")
+	err = brain.syncKeyLocked("first", true)
 	brain.mu.Unlock()
 	if err != nil {
 		t.Fatalf("sync first: %v", err)
@@ -198,7 +198,7 @@ func TestRemoteBrainCacheWriteBudgetLeavesPendingOutbox(t *testing.T) {
 		t.Fatalf("Store second: %v", err)
 	}
 	brain.mu.Lock()
-	err = brain.syncKeyLocked("second")
+	err = brain.syncKeyLocked("second", true)
 	brain.mu.Unlock()
 	if err == nil {
 		t.Fatal("expected write budget error")
@@ -210,6 +210,75 @@ func TestRemoteBrainCacheWriteBudgetLeavesPendingOutbox(t *testing.T) {
 		t.Fatalf("nextOutboxEntry: %v", err)
 	} else if !ok {
 		t.Fatal("expected pending outbox entry after budget exhaustion")
+	}
+}
+
+func TestRemoteBrainCacheCoalescesRepeatedWritesToSameKey(t *testing.T) {
+	remote := newTestRemote(nil)
+	remote.policy = robot.BrainSyncPolicy{CoalesceWindow: time.Hour}
+	brain, err := newRemoteCachedBrain(BrainCacheConfig{Directory: t.TempDir()}, remote)
+	if err != nil {
+		t.Fatalf("newRemoteCachedBrain: %v", err)
+	}
+	defer brain.Shutdown()
+	first := []byte("first")
+	if err := brain.Store("grocery_list", &first); err != nil {
+		t.Fatalf("Store first: %v", err)
+	}
+	second := []byte("second")
+	if err := brain.Store("grocery_list", &second); err != nil {
+		t.Fatalf("Store second: %v", err)
+	}
+	if err := brain.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if remote.putCalls != 1 {
+		t.Fatalf("remote writes = %d, want 1", remote.putCalls)
+	}
+	record := remote.records["grocery_list"]
+	if string(record.Payload) != "second" {
+		t.Fatalf("remote payload = %q, want second", string(record.Payload))
+	}
+	if record.Version != 2 {
+		t.Fatalf("remote version = %d, want 2", record.Version)
+	}
+}
+
+func TestRemoteBrainCacheFlushBypassesNormalWriteBudget(t *testing.T) {
+	remote := newTestRemote(nil)
+	remote.policy = robot.BrainSyncPolicy{
+		WriteBudgetPerDay: 1,
+		CoalesceWindow:    time.Hour,
+	}
+	brain, err := newRemoteCachedBrain(BrainCacheConfig{Directory: t.TempDir()}, remote)
+	if err != nil {
+		t.Fatalf("newRemoteCachedBrain: %v", err)
+	}
+	defer brain.Shutdown()
+	first := []byte("first")
+	if err := brain.Store("first", &first); err != nil {
+		t.Fatalf("Store first: %v", err)
+	}
+	brain.mu.Lock()
+	err = brain.syncKeyLocked("first", true)
+	brain.mu.Unlock()
+	if err != nil {
+		t.Fatalf("sync first: %v", err)
+	}
+	second := []byte("second")
+	if err := brain.Store("second", &second); err != nil {
+		t.Fatalf("Store second: %v", err)
+	}
+	if err := brain.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if remote.putCalls != 2 {
+		t.Fatalf("remote writes = %d, want 2", remote.putCalls)
+	}
+	if _, ok, err := brain.nextOutboxEntry(); err != nil {
+		t.Fatalf("nextOutboxEntry: %v", err)
+	} else if ok {
+		t.Fatal("expected no pending outbox entries after Flush")
 	}
 }
 

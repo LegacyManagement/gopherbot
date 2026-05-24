@@ -45,6 +45,10 @@ func (mb *memBrain) Shutdown() {
 	// nothing to see here, move along
 }
 
+func (mb *memBrain) Flush() error {
+	return nil
+}
+
 // The file brain doesn't need the logger, but other brains might
 func provider(r robot.Handler) robot.SimpleBrain {
 	mb := &memBrain{

@@ -127,6 +127,10 @@ func (db *brainConfig) Shutdown() {
 	// nothing to do, everything is synchronous
 }
 
+func (db *brainConfig) Flush() error {
+	return nil
+}
+
 func provider(r robot.Handler) robot.SimpleBrain {
 	remoteProvider(r)
 	return &dynamocfg

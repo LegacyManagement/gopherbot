@@ -2,6 +2,7 @@ package bot
 
 import (
 	"bytes"
+	"context"
 	crand "crypto/rand"
 	"encoding/base64"
 	"flag"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lnxjedi/gopherbot/robot"
@@ -145,7 +147,20 @@ func cliCommands() []cliCommandSpec {
 			HelpLines: []string{
 				"Usage: gopherbot delete <key>",
 				"",
-				"Deletes the named brain memory key.",
+				"Deletes the named brain memory key from the local cache and, for",
+				"cloud-backed brains, flushes the delete tombstone to cloud before exiting.",
+			},
+			RunsBeforeInit: true,
+		},
+		{
+			Name:         "flush-brain",
+			SummaryUsage: "flush-brain",
+			Summary:      "flush queued brain writes to cloud",
+			HelpLines: []string{
+				"Usage: gopherbot flush-brain",
+				"",
+				"Flushes any queued local brain cache writes to the configured cloud brain.",
+				"For file and mem brains this is a no-op.",
 			},
 			RunsBeforeInit: true,
 		},
@@ -172,9 +187,13 @@ func cliCommands() []cliCommandSpec {
 				"Usage: gopherbot fetch [options] <key>",
 				"",
 				"Reads a brain memory key and writes it to stdout.",
+				"By default, fetch reads the local cache only.",
 				"",
 				"Options:",
 				"  -b, -base64          encode the fetched value as base64",
+				"      -validate-cloud  verify local checksum/version against v3 cloud before printing",
+				"      -cloud           read directly from v3 cloud instead of local cache",
+				"      -update-cache    with -cloud, update the existing local cache with the cloud value",
 			},
 			RunsBeforeInit: true,
 		},
@@ -197,9 +216,12 @@ func cliCommands() []cliCommandSpec {
 			SummaryUsage: "list",
 			Summary:      "list robot memories",
 			HelpLines: []string{
-				"Usage: gopherbot list",
+				"Usage: gopherbot list [options]",
 				"",
-				"Lists all stored brain memory keys.",
+				"Lists local brain cache memory keys by default.",
+				"",
+				"Options:",
+				"      -cloud           list keys from the configured cloud brain",
 			},
 			RunsBeforeInit: true,
 		},
@@ -262,6 +284,8 @@ func cliCommands() []cliCommandSpec {
 				"",
 				"Stores file contents in the named brain memory key.",
 				"If [file] is omitted, stdin is used.",
+				"For cloud-backed brains, writes the local cache and flushes cloud sync",
+				"before exiting.",
 			},
 			RunsBeforeInit: true,
 		},
@@ -389,10 +413,11 @@ func processCLI(command string, args []string) int {
 
 	var fileName string
 	var encodeBinary bool
-	var encodeBase64 bool
 	var genkeyEnvironment string
 	var genkeyWrite bool
 	var genkeyForce bool
+	var fetchOpts cliFetchOptions
+	var listCloud bool
 
 	encFlags := newCLIFlagSet("encrypt")
 	encFlags.StringVar(&fileName, "file", "", "file to encrypt (or - for stdin)")
@@ -416,8 +441,14 @@ func processCLI(command string, args []string) int {
 	genkeyFlags.BoolVar(&genkeyForce, "force", false, "replace existing encrypted key file")
 
 	fetchFlags := newCLIFlagSet("fetch")
-	fetchFlags.BoolVar(&encodeBase64, "base64", false, "encode memory as base64")
-	fetchFlags.BoolVar(&encodeBase64, "b", false, "")
+	fetchFlags.BoolVar(&fetchOpts.base64, "base64", false, "encode memory as base64")
+	fetchFlags.BoolVar(&fetchOpts.base64, "b", false, "")
+	fetchFlags.BoolVar(&fetchOpts.validateCloud, "validate-cloud", false, "verify local checksum/version against cloud")
+	fetchFlags.BoolVar(&fetchOpts.cloud, "cloud", false, "read directly from cloud")
+	fetchFlags.BoolVar(&fetchOpts.updateCache, "update-cache", false, "with -cloud, update local cache")
+
+	listFlags := newCLIFlagSet("list")
+	listFlags.BoolVar(&listCloud, "cloud", false, "list remote cloud keys")
 
 	pullBrainFlags := newCLIFlagSet("pull-brain")
 	var pullBrainOpts brainPullOptions
@@ -567,9 +598,29 @@ func processCLI(command string, args []string) int {
 			printCLICommandHelp(command)
 			return 2
 		}
-		initCLIBrainProvider()
-		defer shutdownCLIBrainProvider()
-		cliFetch(fetchFlags.Arg(0), encodeBase64)
+		if len(fetchFlags.Args()) > 1 {
+			fmt.Println("Error: fetch accepts exactly one memory key")
+			fmt.Println()
+			printCLICommandHelp(command)
+			return 2
+		}
+		if fetchOpts.updateCache && !fetchOpts.cloud {
+			fmt.Println("Error: fetch -update-cache requires -cloud")
+			fmt.Println()
+			printCLICommandHelp(command)
+			return 2
+		}
+		if fetchOpts.cloud && fetchOpts.validateCloud {
+			fmt.Println("Error: fetch -cloud and -validate-cloud are mutually exclusive")
+			fmt.Println()
+			printCLICommandHelp(command)
+			return 2
+		}
+		fetchOpts.key = fetchFlags.Arg(0)
+		if err := cliFetch(fetchOpts); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return 1
+		}
 	case "init":
 		if len(args) != 1 {
 			if len(args) == 0 {
@@ -632,18 +683,34 @@ func processCLI(command string, args []string) int {
 			file = args[1]
 		}
 		initCLIBrainProvider()
-		defer shutdownCLIBrainProvider()
-		cliStore(args[0], file)
+		if err := cliStore(args[0], file); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			shutdownCLIBrainProvider(false)
+			return 1
+		}
+		shutdownCLIBrainProvider(true)
+		reportLocalCloudOutboxStatus()
+		fmt.Println("Stored")
 	case "list":
-		if len(args) > 0 {
-			fmt.Println("Error: list does not take arguments")
+		if err := listFlags.Parse(args); err != nil {
+			if err == flag.ErrHelp {
+				printCLICommandHelp(command)
+				return 0
+			}
+			fmt.Printf("Error: %v\n\n", err)
+			printCLICommandHelp(command)
+			return 2
+		}
+		if len(listFlags.Args()) > 0 {
+			fmt.Println("Error: list does not take positional arguments")
 			fmt.Println()
 			printCLICommandHelp(command)
 			return 2
 		}
-		initCLIBrainProvider()
-		defer shutdownCLIBrainProvider()
-		cliList()
+		if err := cliList(listCloud); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return 1
+		}
 	case "delete":
 		if len(args) != 1 {
 			fmt.Println("Error: delete requires exactly one memory key")
@@ -652,8 +719,30 @@ func processCLI(command string, args []string) int {
 			return 2
 		}
 		initCLIBrainProvider()
-		defer shutdownCLIBrainProvider()
-		cliDelete(args[0])
+		if err := cliDelete(args[0]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			shutdownCLIBrainProvider(false)
+			return 1
+		}
+		shutdownCLIBrainProvider(true)
+		reportLocalCloudOutboxStatus()
+		fmt.Println("Deleted")
+	case "flush-brain":
+		if len(args) > 0 {
+			fmt.Println("Error: flush-brain does not take arguments")
+			fmt.Println()
+			printCLICommandHelp(command)
+			return 2
+		}
+		initCLIBrainProvider()
+		if err := interfaces.brain.Flush(); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			shutdownCLIBrainProvider(false)
+			return 1
+		}
+		reportLocalCloudOutboxStatus()
+		shutdownCLIBrainProvider(false)
+		fmt.Println("Brain flushed")
 	case "pull-brain":
 		if err := pullBrainFlags.Parse(args); err != nil {
 			if err == flag.ErrHelp {
@@ -795,10 +884,47 @@ func initCLIBrainProvider() {
 	Log(robot.Info, "Initialized brain provider '%s'", providerName)
 }
 
-func shutdownCLIBrainProvider() {
-	if interfaces.brain != nil {
+func shutdownCLIBrainProvider(flush bool) {
+	if interfaces.brain == nil {
+		return
+	}
+	if flush {
+		interfaces.brain.Shutdown()
+	} else if brain, ok := interfaces.brain.(interface{ ShutdownWithoutFlush() }); ok {
+		brain.ShutdownWithoutFlush()
+	} else {
 		interfaces.brain.Shutdown()
 	}
+	interfaces.brain = nil
+}
+
+func initCLILocalBrainProviderForRead() error {
+	initCLIConfigOnly()
+	if interfaces.brain != nil {
+		return nil
+	}
+	provider := currentCfg.brainProvider
+	if provider == "" {
+		provider = "mem"
+	}
+	if provider == "mem" || provider == "file" {
+		brain, _, err := initializeConfiguredBrain()
+		if err != nil {
+			return err
+		}
+		interfaces.brain = brain
+		return nil
+	}
+	cache, err := openExistingBrainCacheAny(currentCfg.brainCache)
+	if err != nil {
+		return fmt.Errorf("opening local brain cache: %w; run gopherbot pull-brain or use fetch -cloud", err)
+	}
+	if cache.control.Provider.Provider != provider {
+		return fmt.Errorf("brain cache provider mismatch: cache is %s/%s, config is %s; use an explicit cloud command or choose another BrainCache.Directory",
+			cache.control.Provider.Provider, cache.control.Provider.Scope, provider)
+	}
+	interfaces.brain = cache
+	return nil
 }
 
 func generateEncryptedUUID() (string, string, error) {
@@ -1065,27 +1191,302 @@ func cliDecrypt(item, file string) {
 	os.Exit(1)
 }
 
-func cliFetch(item string, b64 bool) {
+type cliFetchOptions struct {
+	key           string
+	base64        bool
+	validateCloud bool
+	cloud         bool
+	updateCache   bool
+}
+
+func cliFetch(opts cliFetchOptions) error {
+	if opts.cloud {
+		return cliFetchCloud(opts)
+	}
+	if err := initCLILocalBrainProviderForRead(); err != nil {
+		return err
+	}
+	defer shutdownCLIBrainProvider(false)
+	if opts.validateCloud {
+		cache, ok := interfaces.brain.(*cachedBrain)
+		if !ok {
+			return fmt.Errorf("configured brain is not cloud-backed")
+		}
+		remote, _, _, err := initRemoteBrainForCLI()
+		if err != nil {
+			return err
+		}
+		defer remote.Shutdown()
+		if err := validateLocalMemoryAgainstCloud(cache, remote, opts.key); err != nil {
+			fmt.Fprintf(os.Stderr, "Brain cache sync: %v\n", err)
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local memory %s matches cloud\n", opts.key)
+	}
+	return cliFetchLocal(opts.key, opts.base64)
+}
+
+func cliFetchLocal(item string, b64 bool) error {
 	_, datum, exists, ret := getDatum(item, false)
 	if ret != robot.Ok {
-		fmt.Printf("Retrieving datum: %v\n", ret)
-		os.Exit(1)
+		return fmt.Errorf("retrieving datum: %v", ret)
 	}
 	if !exists {
-		fmt.Println("Item not found")
-		os.Exit(1)
+		return fmt.Errorf("item not found")
 	}
+	writeFetchedMemory(*datum, b64)
+	return nil
+}
+
+func cliFetchCloud(opts cliFetchOptions) error {
+	initCLIConfigOnly()
+	remote, _, providerName, err := initRemoteBrainForCLI()
+	if err != nil {
+		return err
+	}
+	defer remote.Shutdown()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	record, exists, err := remote.Get(ctx, opts.key)
+	if err != nil {
+		return err
+	}
+	if !exists || record.Deleted {
+		return fmt.Errorf("item not found in cloud brain %q", providerName)
+	}
+	if err := validateRemoteMemoryRecord(record); err != nil {
+		return err
+	}
+	if opts.updateCache {
+		cache, err := openExistingBrainCacheForIdentity(currentCfg.brainCache, remote.Identity())
+		if err != nil {
+			return err
+		}
+		if err := cache.importV3Record(record); err != nil {
+			return err
+		}
+	}
+	reportCloudMemorySyncStatus(remote.Identity(), record)
+	payload, err := decryptMemoryPayload(record.Payload)
+	if err != nil {
+		return err
+	}
+	writeFetchedMemory(payload, opts.base64)
+	return nil
+}
+
+func validateLocalMemoryAgainstCloud(cache *cachedBrain, remote robot.RemoteBrainBackend, key string) error {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	outbox, pending, err := cache.readOutboxEntry(key)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return fmt.Errorf("local memory %s has pending cloud sync at version %d; run gopherbot flush-brain before validating", key, outbox.Version)
+	}
+	meta, exists, err := cache.readMeta(key)
+	if err != nil {
+		return err
+	}
+	if !exists || meta.Deleted {
+		return fmt.Errorf("item not found in local cache")
+	}
+	payload, err := os.ReadFile(cache.payloadPath(key))
+	if err != nil {
+		return err
+	}
+	localChecksum := checksumBytes(payload)
+	if meta.Checksum != localChecksum {
+		return fmt.Errorf("local memory %s checksum mismatch: metadata=%s payload=%s", key, meta.Checksum, localChecksum)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	record, exists, err := remote.Get(ctx, key)
+	if err != nil {
+		return err
+	}
+	if !exists || record.Deleted {
+		return fmt.Errorf("cloud memory %s is missing or deleted", key)
+	}
+	if err := validateRemoteMemoryRecord(record); err != nil {
+		return err
+	}
+	if record.Version != meta.Version {
+		return fmt.Errorf("cloud memory %s version mismatch: local=%d cloud=%d", key, meta.Version, record.Version)
+	}
+	if record.Checksum != localChecksum {
+		return fmt.Errorf("cloud memory %s checksum mismatch: local=%s cloud=%s", key, localChecksum, record.Checksum)
+	}
+	return nil
+}
+
+func validateRemoteMemoryRecord(record robot.RemoteBrainRecord) error {
+	if record.Format != brainCacheFormat {
+		return fmt.Errorf("cloud memory %s is not a v3 brain record", record.Key)
+	}
+	if record.Checksum == "" {
+		return fmt.Errorf("cloud memory %s is missing checksum metadata", record.Key)
+	}
+	payloadChecksum := checksumBytes(record.Payload)
+	if record.Checksum != payloadChecksum {
+		return fmt.Errorf("cloud memory %s checksum mismatch: metadata=%s payload=%s", record.Key, record.Checksum, payloadChecksum)
+	}
+	return nil
+}
+
+func decryptMemoryPayload(payload []byte) ([]byte, error) {
+	cryptKey.RLock()
+	initialized := cryptKey.initialized
+	key := cryptKey.key
+	cryptKey.RUnlock()
+	if !initialized {
+		return nil, fmt.Errorf("brain encryption is not initialized")
+	}
+	plain, err := decrypt(payload, key)
+	if err != nil {
+		return nil, fmt.Errorf("decrypting cloud memory: %w", err)
+	}
+	return plain, nil
+}
+
+func writeFetchedMemory(payload []byte, b64 bool) {
 	if b64 {
 		encoder := base64.NewEncoder(base64.StdEncoding, os.Stdout)
-		encoder.Write(*datum)
+		encoder.Write(payload)
+		encoder.Close()
 		os.Stdout.Write([]byte("\n"))
 		return
 	}
-	os.Stdout.Write(*datum)
+	os.Stdout.Write(payload)
 	os.Stdout.Write([]byte("\n"))
 }
 
-func cliStore(key, file string) {
+func reportCloudMemorySyncStatus(identity robot.BrainBackendIdentity, record robot.RemoteBrainRecord) {
+	cache, err := openExistingBrainCacheForIdentity(currentCfg.brainCache, identity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local cache unavailable or mismatched (%v)\n", err)
+		return
+	}
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if outbox, pending, err := cache.readOutboxEntry(record.Key); err != nil {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: unable to inspect local outbox for %s: %v\n", record.Key, err)
+	} else if pending {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local memory %s has pending cloud sync at version %d\n", record.Key, outbox.Version)
+		return
+	}
+	meta, exists, err := cache.readMeta(record.Key)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: unable to inspect local metadata for %s: %v\n", record.Key, err)
+		return
+	}
+	if record.Deleted {
+		if !exists || meta.Deleted {
+			fmt.Fprintf(os.Stderr, "Brain cache sync: local memory %s matches cloud tombstone\n", record.Key)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local memory %s is active but cloud has a tombstone\n", record.Key)
+		return
+	}
+	if !exists {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local cache is missing cloud memory %s\n", record.Key)
+		return
+	}
+	if meta.Deleted {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local cache has a tombstone for active cloud memory %s\n", record.Key)
+		return
+	}
+	payload, err := os.ReadFile(cache.payloadPath(record.Key))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: unable to read local payload for %s: %v\n", record.Key, err)
+		return
+	}
+	localChecksum := checksumBytes(payload)
+	if meta.Version == record.Version && localChecksum == record.Checksum {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local memory %s matches cloud version %d\n", record.Key, record.Version)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Brain cache sync: local memory %s differs from cloud (local version %d checksum %s, cloud version %d checksum %s)\n",
+		record.Key, meta.Version, localChecksum, record.Version, record.Checksum)
+}
+
+func reportCloudListSyncStatus(identity robot.BrainBackendIdentity, records []robot.RemoteBrainRecord) {
+	cache, err := openExistingBrainCacheForIdentity(currentCfg.brainCache, identity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local cache unavailable or mismatched (%v)\n", err)
+		return
+	}
+	localKeys, err := cache.List()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: unable to list local cache: %v\n", err)
+		return
+	}
+	pending, err := cache.outboxEntries()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: unable to inspect local outbox: %v\n", err)
+		return
+	}
+	cloudSet := make(map[string]bool, len(records))
+	var missingLocal, mismatched, v2OrInvalid int
+	for _, record := range records {
+		cloudSet[record.Key] = true
+		if record.Format != brainCacheFormat {
+			v2OrInvalid++
+			continue
+		}
+		meta, exists, err := cache.readMeta(record.Key)
+		if err != nil || !exists || meta.Deleted {
+			missingLocal++
+			continue
+		}
+		payload, err := os.ReadFile(cache.payloadPath(record.Key))
+		if err != nil {
+			mismatched++
+			continue
+		}
+		if meta.Version != record.Version || checksumBytes(payload) != record.Checksum {
+			mismatched++
+		}
+	}
+	var extraLocal int
+	for _, key := range localKeys {
+		if !cloudSet[key] {
+			extraLocal++
+		}
+	}
+	switch {
+	case len(pending) == 0 && missingLocal == 0 && extraLocal == 0 && mismatched == 0 && v2OrInvalid == 0:
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local cache matches listed cloud memories (%d key(s))\n", len(records))
+	default:
+		fmt.Fprintf(os.Stderr, "Brain cache sync: %d pending local write(s), %d missing local key(s), %d extra local key(s), %d mismatched key(s), %d non-v3 cloud key(s)\n",
+			len(pending), missingLocal, extraLocal, mismatched, v2OrInvalid)
+	}
+}
+
+func reportLocalCloudOutboxStatus() {
+	provider := currentCfg.brainProvider
+	if provider == "" || provider == "mem" || provider == "file" {
+		return
+	}
+	cache, err := openExistingBrainCacheAny(currentCfg.brainCache)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: unable to inspect local cache (%v)\n", err)
+		return
+	}
+	pending, err := cache.outboxEntries()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: unable to inspect local outbox (%v)\n", err)
+		return
+	}
+	if len(pending) == 0 {
+		fmt.Fprintln(os.Stderr, "Brain cache sync: no pending local cloud writes")
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Brain cache sync: %d pending local cloud write(s)\n", len(pending))
+}
+
+func cliStore(key, file string) error {
 	var fc []byte
 	var err error
 	if file == "-" {
@@ -1094,41 +1495,86 @@ func cliStore(key, file string) {
 		fc, err = os.ReadFile(file)
 	}
 	if err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("reading file: %w", err)
 	}
 	ret := storeDatum(key, &fc)
 	if ret != robot.Ok {
-		fmt.Printf("Storing datum: %s\n", ret)
-		return
+		return fmt.Errorf("storing datum: %s", ret)
 	}
-	fmt.Println("Stored")
+	return nil
 }
 
-func cliList() {
+func cliList(cloud bool) error {
+	if cloud {
+		return cliListCloud()
+	}
+	if err := initCLILocalBrainProviderForRead(); err != nil {
+		return err
+	}
+	defer shutdownCLIBrainProvider(false)
 	brain := interfaces.brain
 	list, err := brain.List()
 	if err != nil {
-		fmt.Printf("Listing memories: %v\n", err)
-		return
+		return fmt.Errorf("listing memories: %w", err)
 	}
 	if len(list) > 0 {
 		for _, memory := range list {
 			fmt.Println(memory)
 		}
-		return
+		return nil
 	}
 	fmt.Println("No memories found")
+	return nil
 }
 
-func cliDelete(key string) {
+func cliListCloud() error {
+	initCLIConfigOnly()
+	remote, _, providerName, err := initRemoteBrainForCLI()
+	if err != nil {
+		return err
+	}
+	defer remote.Shutdown()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cursor := ""
+	var keys []string
+	var records []robot.RemoteBrainRecord
+	for {
+		page, err := remote.ListMetadata(ctx, cursor, 1000)
+		if err != nil {
+			return fmt.Errorf("listing cloud memories from %s: %w", providerName, err)
+		}
+		for _, record := range page.Records {
+			if record.Deleted {
+				continue
+			}
+			records = append(records, record)
+			keys = append(keys, record.Key)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	reportCloudListSyncStatus(remote.Identity(), records)
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		fmt.Println("No cloud memories found")
+		return nil
+	}
+	for _, key := range keys {
+		fmt.Println(key)
+	}
+	return nil
+}
+
+func cliDelete(key string) error {
 	brain := interfaces.brain
 	err := brain.Delete(key)
 	if err != nil {
-		fmt.Printf("Deleting memory: %v\n", err)
-		return
+		return fmt.Errorf("deleting memory: %w", err)
 	}
-	fmt.Println("Deleted")
+	return nil
 }
 
 func cliValidate(path string) {

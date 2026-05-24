@@ -25,8 +25,11 @@ type SimpleBrain interface {
 	List() (keys []string, err error)
 	// Delete deletes a memory
 	Delete(key string) error
-	// Shutdown should stop any goroutines (if any) and return after all
-	// delayed writes complete (if any).
+	// Flush blocks until all delayed writes are durably committed to the
+	// backing provider.
+	Flush() error
+	// Shutdown should stop any goroutines (if any). Callers should call Flush
+	// first when they need a clean shutdown or restart.
 	Shutdown()
 }
 

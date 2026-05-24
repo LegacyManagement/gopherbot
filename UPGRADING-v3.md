@@ -174,6 +174,19 @@ Useful command options:
   cache.
 - `restore-brain -dry-run` reports planned writes/removals.
 - `restore-brain -budget <n>` limits cloud writes for that run.
+- `fetch <key>` and `list` read the local cache by default.
+- `fetch -validate-cloud <key>` checks the local cached record against the v3
+  cloud record before printing the local value.
+- `fetch -cloud <key>` reads directly from the v3 cloud brain; add
+  `-update-cache` to repair an existing complete local cache for that key.
+- `list -cloud` lists cloud keys.
+- `store <key>` and `delete <key>` flush their cloud operation before reporting
+  success.
+- `flush-brain` drains queued cache writes to the configured cloud brain.
+
+Any CLI command that touches the cloud prints local cache sync status to stderr.
+Stdout remains reserved for command data such as fetched memory bytes or key
+lists.
 
 Normal robot startup contains no v2 conversion logic. If startup reports that a
 cloud brain is v2/unversioned, run the CLI migration path rather than expecting

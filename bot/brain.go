@@ -260,9 +260,11 @@ func brainQuit() {
 	reply := make(chan struct{})
 	brainChanEvents <- quitRequest{reply}
 	Log(robot.Debug, "Brain exiting on quit")
-	// Stop any goroutines and finish any remaining writes.
-	interfaces.brain.Shutdown()
 	<-reply
+	if err := interfaces.brain.Flush(); err != nil {
+		Log(robot.Error, "Brain flush failed during shutdown: %v", err)
+	}
+	interfaces.brain.Shutdown()
 }
 
 const keyRegex = `^[\w:-]+$` // keys can only be word chars + separators (: and -)

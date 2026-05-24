@@ -119,6 +119,10 @@ func (b *firestoreBrain) Shutdown() {
 	}
 }
 
+func (b *firestoreBrain) Flush() error {
+	return nil
+}
+
 func provider(r robot.Handler) robot.SimpleBrain {
 	remote := remoteProvider(r)
 	return remote.(*firestoreRemoteBrain).firestoreBrain

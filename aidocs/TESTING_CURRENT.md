@@ -171,6 +171,13 @@ Notes:
 - `fetch` returns raw JSON payloads, which is useful for confirming actual stored shape versus expected struct shape.
 - CLI memory commands initialize the configured brain provider object directly
   and do not start the normal serialized `runBrain()` loop.
+- `fetch` and `list` read the local cache by default. Use
+  `fetch -validate-cloud <key>`, `fetch -cloud <key>`, or `list -cloud` for
+  explicit cloud inspection.
+- Cloud-touching CLI brain commands write cache-sync status to stderr so stdout
+  remains suitable for fetched values or key-list scripting.
+- `store`, `delete`, and `flush-brain` flush queued cloud writes before
+  reporting success for cloud-backed brains.
 
 ## Test case structure
 

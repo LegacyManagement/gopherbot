@@ -103,6 +103,7 @@ func TestUserCLICommandsRunBeforeFullInit(t *testing.T) {
 		"dump",
 		"encrypt",
 		"fetch",
+		"flush-brain",
 		"genkey",
 		"gentotp",
 		"help",
@@ -115,6 +116,44 @@ func TestUserCLICommandsRunBeforeFullInit(t *testing.T) {
 	} {
 		if !cliCommandRunsBeforeInit(command) {
 			t.Fatalf("%s command should run before full robot initialization", command)
+		}
+	}
+}
+
+func TestProcessCLIHelpBrainMemoryCommandsShowCacheSemantics(t *testing.T) {
+	for command, needles := range map[string][]string{
+		"fetch": {
+			"By default, fetch reads the local cache only",
+			"-validate-cloud",
+			"-cloud",
+		},
+		"store": {
+			"Usage: gopherbot store <key> [file]",
+			"flushes cloud sync",
+		},
+		"delete": {
+			"Usage: gopherbot delete <key>",
+			"delete tombstone to cloud",
+		},
+		"flush-brain": {
+			"Usage: gopherbot flush-brain",
+			"queued local brain cache writes",
+		},
+		"list": {
+			"Usage: gopherbot list [options]",
+			"-cloud",
+		},
+	} {
+		output := captureStdout(t, func() {
+			code := processCLI("help", []string{command})
+			if code != 0 {
+				t.Fatalf("processCLI(help %s) = %d, want 0", command, code)
+			}
+		})
+		for _, needle := range needles {
+			if !strings.Contains(output, needle) {
+				t.Fatalf("processCLI(help %s) missing %q in output:\n%s", command, needle, output)
+			}
 		}
 	}
 }

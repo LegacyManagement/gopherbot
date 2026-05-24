@@ -71,6 +71,7 @@ func cliPullBrain(opts brainPullOptions) error {
 		}
 	}
 	if opts.dryRun {
+		reportCloudListSyncStatus(remote.Identity(), metas)
 		fmt.Printf("Remote provider: %s\nTotal keys: %d\nV2 keys: %d\nV3 keys: %d\nWould modify remote: %t\n", providerName, len(metas), v2Count, v3Count, opts.upgradeCloudV3)
 		return nil
 	}
@@ -142,6 +143,15 @@ func cliPullBrain(opts brainPullOptions) error {
 	}
 	if err := cache.finalizeImport(importedFrom); err != nil {
 		return err
+	}
+	if opts.upgradeCloudV3 {
+		if records, err := listAllRemoteBrainMetadata(ctx, remote); err == nil {
+			reportCloudListSyncStatus(remote.Identity(), records)
+		} else {
+			fmt.Fprintf(os.Stderr, "Brain cache sync: unable to refresh cloud status: %v\n", err)
+		}
+	} else {
+		reportCloudListSyncStatus(remote.Identity(), metas)
 	}
 	fmt.Printf("Pulled %d memories into local brain cache (%d v2, %d v3, %d downloaded)\n", len(metas), v2Count, v3Count, downloaded)
 	if budgetExhausted {
@@ -289,10 +299,20 @@ func cliRestoreBrain(opts brainRestoreOptions) error {
 		writes++
 	}
 	if opts.dryRun {
+		if records, err := listAllRemoteBrainMetadata(ctx, remote); err == nil {
+			reportCloudListSyncStatus(remote.Identity(), records)
+		} else {
+			fmt.Fprintf(os.Stderr, "Brain cache sync: unable to inspect cloud status: %v\n", err)
+		}
 		fmt.Printf("Would write %d memories to %s in %s format\n", writes, providerName, opts.remoteFormat)
 		return nil
 	}
 	fmt.Printf("Wrote %d memories to %s in %s format\n", writes, providerName, opts.remoteFormat)
+	if records, err := listAllRemoteBrainMetadata(ctx, remote); err == nil {
+		reportCloudListSyncStatus(remote.Identity(), records)
+	} else {
+		fmt.Fprintf(os.Stderr, "Brain cache sync: unable to inspect cloud status: %v\n", err)
+	}
 	if opts.remoteFormat == "v2" {
 		fmt.Println("Remote brain is now v2-compatible and is not valid for v3 runtime startup.")
 	}
@@ -400,6 +420,23 @@ func effectiveCloudWriteBudget(remote robot.RemoteBrainBackend, override int) in
 		return override
 	}
 	return remote.SyncPolicy().WriteBudgetPerDay
+}
+
+func listAllRemoteBrainMetadata(ctx context.Context, remote robot.RemoteBrainBackend) ([]robot.RemoteBrainRecord, error) {
+	cursor := ""
+	var records []robot.RemoteBrainRecord
+	for {
+		page, err := remote.ListMetadata(ctx, cursor, 1000)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, page.Records...)
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	return records, nil
 }
 
 func initRemoteBrainForCLI() (robot.RemoteBrainBackend, robot.LegacyBrainBackend, string, error) {

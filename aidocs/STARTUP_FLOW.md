@@ -126,8 +126,8 @@ CLI handling is intentionally split so help and obvious usage failures do not fo
 3. All user-facing CLI subcommands run before full `initBot()` after private environment loading. They do not start connectors, queues, modules, the HTTP listener, or the serialized brain loop.
 4. Encryption-only commands (`encrypt`, `decrypt`, `uuid`) initialize encryption directly from `GOPHER_ENCRYPTION_KEY` plus `binary-encrypted-key[.<environment>]`.
 5. Config-only commands (`dump`, `validate`, `gentotp`) use a lightweight pre-connect config load when needed, but do not initialize a brain provider.
-6. Memory commands (`fetch`, `store`, `list`, `delete`) use the lightweight config load plus the configured brain provider object directly, then call provider shutdown. They do not start `runBrain()`.
-7. Brain migration commands (`pull-brain`, `restore-brain`) use the lightweight config load and remote brain backend directly. They are the only v2 brain import/export compatibility paths.
+6. Memory commands use the lightweight config load plus the configured brain provider object or local cache directly. They do not start `runBrain()`. `fetch` and `list` read the local cache by default and close without flushing pending cloud work; `fetch -validate-cloud`, `fetch -cloud`, and `list -cloud` are explicit cloud inspection paths that report local cache sync status to stderr. `store` and `delete` update the local cache and flush cloud sync before reporting success.
+7. Brain migration commands (`pull-brain`, `restore-brain`) and `flush-brain` use the lightweight config load and remote brain backend directly. `pull-brain` / `restore-brain` are the only v2 brain import/export compatibility paths.
 8. `genkey` is a no-init CLI command after private environment loading; it uses `GOPHER_ENCRYPTION_KEY` directly to generate an encrypted `binary-encrypted-key[.<environment>]` payload without starting brain, connectors, or plugins.
 
 Operational note:
@@ -661,11 +661,16 @@ Shutdown can be triggered by admin commands, pipeline tasks, or process signals.
 3. `stop()` first triggers prompt shutdown signaling so in-progress `Prompt*` waits return `Interrupted` immediately.
 4. Stop queue provider runtimes so external queues stop introducing new work.
 5. `stop()` waits for running pipelines (`state.Wait()`).
-6. Stop brain loop (`brainQuit()`), then stop connector runtimes.
+6. Stop brain loop (`brainQuit()`), flush the brain provider until all delayed
+   writes reach the backing store, then stop connector runtimes.
 7. Stop signal handler goroutine.
 8. Emit restart flag on `done` channel.
 
-This keeps shutdown deterministic even when interactive prompts are using long timeout windows.
+This keeps shutdown deterministic even when interactive prompts are using long
+timeout windows. For cloud-backed brains, shutdown and restart are gated on both
+pipeline completion and `SimpleBrain.Flush()` completion; the local brain cache
+will keep retrying pending cloud writes and emit periodic warnings until the
+outbox is empty.
 
 ## Key Files
 

@@ -70,8 +70,11 @@ The sync worker:
 - enforces provider `WriteBudgetPerDay` using `write-budget.json`
 - leaves unsynced work in `outbox/` when the remote write fails or the daily
   budget is exhausted
-- flushes until clean or until `FlushOnShutdownMaxDuration` elapses during
-  shutdown
+- coalesces repeated updates to the same memory key by replacing that key's
+  outbox entry, so only the latest version is sent if the earlier version has
+  not reached the cloud yet
+- flushes until clean during shutdown/restart; `FlushOnShutdownMaxDuration`
+  controls periodic warning cadence, not a hard cutoff
 
 The engine's instance-lock memory key is synced immediately because it protects
 single-robot ownership.
@@ -91,6 +94,21 @@ V2 compatibility is CLI-only:
 - `restore-brain -force` removes remote keys absent from the local cache.
 
 This keeps normal startup deterministic and avoids hidden one-way upgrades.
+
+Existing memory commands are cache-first with explicit cloud inspection:
+
+- `fetch <key>` and `list` read the local cache only.
+- `fetch -validate-cloud <key>` verifies the local cached record against the v3
+  cloud record before printing the local value.
+- `fetch -cloud <key>` reads directly from v3 cloud; `-update-cache` can repair
+  an existing complete local cache for that key.
+- `list -cloud` lists cloud keys.
+- `store <key>` and `delete <key>` write the local cache and flush the cloud
+  operation before reporting success.
+- `flush-brain` drains queued local outbox work.
+
+Whenever a CLI command intentionally touches the cloud, it writes cache-sync
+status to stderr so stdout remains scriptable command output.
 
 ## Configuration
 

@@ -154,6 +154,18 @@ func openExistingBrainCacheAny(cfg BrainCacheConfig) (*cachedBrain, error) {
 	return cb, nil
 }
 
+func openExistingBrainCacheForIdentity(cfg BrainCacheConfig, identity robot.BrainBackendIdentity) (*cachedBrain, error) {
+	cfg = defaultBrainCacheConfig(cfg)
+	cb := &cachedBrain{cfg: cfg}
+	if err := cb.loadControl(identity); err != nil {
+		return nil, err
+	}
+	if !cb.control.Complete {
+		return nil, fmt.Errorf("local brain cache at %s is incomplete; run gopherbot pull-brain", cfg.Directory)
+	}
+	return cb, nil
+}
+
 func defaultBrainSyncPolicy(policy robot.BrainSyncPolicy) robot.BrainSyncPolicy {
 	if policy.CoalesceWindow <= 0 {
 		policy.CoalesceWindow = 2 * time.Second
@@ -368,7 +380,7 @@ func (b *cachedBrain) Store(key string, blob *[]byte) error {
 			return err
 		}
 		if key == brainLockKey {
-			return b.syncKeyLocked(key)
+			return b.syncKeyLocked(key, false)
 		}
 		b.signalSync()
 	}
@@ -520,14 +532,58 @@ func (b *cachedBrain) Delete(key string) error {
 			return err
 		}
 		if key == brainLockKey {
-			return b.syncKeyLocked(key)
+			return b.syncKeyLocked(key, false)
 		}
 		b.signalSync()
 	}
 	return nil
 }
 
+func (b *cachedBrain) Flush() error {
+	if b.remote == nil {
+		return nil
+	}
+	warnEvery := b.policy.FlushOnShutdownMaxDuration
+	if warnEvery <= 0 {
+		warnEvery = 10 * time.Second
+	}
+	lastWarn := time.Now()
+	for {
+		entry, ok, err := b.nextOutboxEntry()
+		if err != nil {
+			if time.Since(lastWarn) >= warnEvery {
+				Log(robot.Warn, "Brain cache flush is waiting because reading the outbox failed: %v", err)
+				lastWarn = time.Now()
+			}
+			time.Sleep(time.Second)
+			continue
+		}
+		if !ok {
+			return nil
+		}
+		b.mu.Lock()
+		err = b.syncKeyLocked(entry.Key, false)
+		b.mu.Unlock()
+		if err != nil {
+			if time.Since(lastWarn) >= warnEvery {
+				Log(robot.Warn, "Brain cache flush is waiting for cloud sync of %s: %v", entry.Key, err)
+				lastWarn = time.Now()
+			}
+			time.Sleep(time.Second)
+			continue
+		}
+		if b.policy.MinWriteInterval > 0 {
+			time.Sleep(b.policy.MinWriteInterval)
+		}
+	}
+}
+
 func (b *cachedBrain) Shutdown() {
+	if b.remote != nil {
+		if err := b.Flush(); err != nil {
+			Log(robot.Warn, "Brain cache flush during shutdown returned error: %v", err)
+		}
+	}
 	b.mu.Lock()
 	if b.stopped {
 		b.mu.Unlock()
@@ -538,20 +594,22 @@ func (b *cachedBrain) Shutdown() {
 	if b.remote != nil {
 		b.signalSync()
 		close(b.done)
-		finished := make(chan struct{})
-		go func() {
-			b.wg.Wait()
-			close(finished)
-		}()
-		timeout := b.policy.FlushOnShutdownMaxDuration
-		if timeout <= 0 {
-			timeout = 10 * time.Second
-		}
-		select {
-		case <-finished:
-		case <-time.After(timeout):
-			Log(robot.Warn, "Timed out waiting for brain cache cloud sync shutdown after %s", timeout)
-		}
+		b.wg.Wait()
+		b.remote.Shutdown()
+	}
+}
+
+func (b *cachedBrain) ShutdownWithoutFlush() {
+	b.mu.Lock()
+	if b.stopped {
+		b.mu.Unlock()
+		return
+	}
+	b.stopped = true
+	b.mu.Unlock()
+	if b.remote != nil {
+		close(b.done)
+		b.wg.Wait()
 		b.remote.Shutdown()
 	}
 }
@@ -572,13 +630,11 @@ func (b *cachedBrain) syncLoop() {
 	for {
 		select {
 		case <-b.done:
-			b.syncPending()
 			return
 		case <-b.wake:
 			if b.policy.CoalesceWindow > 0 {
 				select {
 				case <-b.done:
-					b.syncPending()
 					return
 				case <-time.After(b.policy.CoalesceWindow):
 				}
@@ -599,7 +655,7 @@ func (b *cachedBrain) syncPending() {
 			return
 		}
 		b.mu.Lock()
-		err = b.syncKeyLocked(entry.Key)
+		err = b.syncOutboxEntryLocked(entry, true)
 		b.mu.Unlock()
 		if err != nil {
 			Log(robot.Warn, "Syncing brain memory %s: %v", entry.Key, err)
@@ -615,16 +671,37 @@ func (b *cachedBrain) syncPending() {
 	}
 }
 
-func (b *cachedBrain) syncKeyLocked(key string) error {
-	if b.remote == nil {
-		return nil
-	}
-	meta, exists, err := b.readMeta(key)
+func (b *cachedBrain) syncKeyLocked(key string, enforceBudget bool) error {
+	entry, exists, err := b.readOutboxEntry(key)
 	if err != nil {
 		return err
 	}
 	if !exists {
-		return b.removeOutbox(key)
+		return nil
+	}
+	return b.syncOutboxEntryLocked(entry, enforceBudget)
+}
+
+func (b *cachedBrain) syncOutboxEntryLocked(entry brainCacheOutboxEntry, enforceBudget bool) error {
+	if b.remote == nil {
+		return nil
+	}
+	current, exists, err := b.readOutboxEntry(entry.Key)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if current.Version != entry.Version {
+		return nil
+	}
+	meta, exists, err := b.readMeta(entry.Key)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return b.removeOutbox(entry.Key)
 	}
 	record := robot.RemoteBrainRecord{
 		Key:       meta.Key,
@@ -636,15 +713,17 @@ func (b *cachedBrain) syncKeyLocked(key string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := b.checkCloudWriteBudgetLocked(); err != nil {
-		return err
+	if enforceBudget {
+		if err := b.checkCloudWriteBudgetLocked(); err != nil {
+			return err
+		}
 	}
 	if meta.Deleted {
 		if err := b.remote.Delete(ctx, record); err != nil {
 			return err
 		}
 	} else {
-		payload, err := os.ReadFile(b.payloadPath(key))
+		payload, err := os.ReadFile(b.payloadPath(entry.Key))
 		if err != nil {
 			return err
 		}
@@ -665,7 +744,7 @@ func (b *cachedBrain) syncKeyLocked(key string) error {
 		return err
 	}
 	if meta.Version >= b.control.CheckpointVers {
-		b.control.CheckpointKey = key
+		b.control.CheckpointKey = entry.Key
 		b.control.CheckpointVers = meta.Version
 		b.control.CheckpointSum = meta.Checksum
 		b.control.UpdatedAt = now
@@ -673,7 +752,7 @@ func (b *cachedBrain) syncKeyLocked(key string) error {
 			return err
 		}
 	}
-	return b.removeOutbox(key)
+	return b.removeOutbox(entry.Key)
 }
 
 func (b *cachedBrain) nextOutboxEntry() (brainCacheOutboxEntry, bool, error) {
@@ -682,6 +761,21 @@ func (b *cachedBrain) nextOutboxEntry() (brainCacheOutboxEntry, bool, error) {
 		return brainCacheOutboxEntry{}, false, err
 	}
 	return entries[0], true, nil
+}
+
+func (b *cachedBrain) readOutboxEntry(key string) (brainCacheOutboxEntry, bool, error) {
+	data, err := os.ReadFile(b.outboxPath(key))
+	if errors.Is(err, os.ErrNotExist) {
+		return brainCacheOutboxEntry{}, false, nil
+	}
+	if err != nil {
+		return brainCacheOutboxEntry{}, false, err
+	}
+	var entry brainCacheOutboxEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return brainCacheOutboxEntry{}, false, err
+	}
+	return entry, true, nil
 }
 
 func (b *cachedBrain) outboxEntries() ([]brainCacheOutboxEntry, error) {

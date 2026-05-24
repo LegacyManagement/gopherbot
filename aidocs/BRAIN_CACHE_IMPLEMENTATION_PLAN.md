@@ -388,6 +388,7 @@ type SimpleBrain interface {
     Retrieve(key string) (blob *[]byte, exists bool, err error)
     List() (keys []string, err error)
     Delete(key string) error
+    Flush() error
     Shutdown()
 }
 
@@ -403,7 +404,10 @@ type RemoteBrainBackend interface {
 ```
 
 `SimpleBrain` remains what the engine uses. `cachedBrain` implements it.
-Cloud providers implement `RemoteBrainBackend`.
+`Flush()` is part of the provider/engine contract: shutdown and restart first
+stop the serialized brain loop, then block in `Flush()` until all local outbox
+entries have reached the configured backing provider. Cloud providers implement
+`RemoteBrainBackend`.
 
 `RemoteBrainRecord` should contain encrypted payload bytes plus v3 metadata. For
 metadata-only list results, `Payload` can be nil.
@@ -731,12 +735,27 @@ run, it should leave clear progress information and be safely resumable.
 
 After this change:
 
-- `fetch`, `store`, `list`, and `delete` should operate on the local cache
-- for cloud-backed brains, `store` and `delete` enqueue cloud sync like runtime
-  writes
-- do not add implicit remote reads to `fetch`
-- optional future flags such as `list -cloud` should be separate, explicit
-  provider inspection commands
+- `fetch` and `list` should read the local cache by default and should not
+  perform implicit remote reads
+- `fetch -validate-cloud` should read the v3 cloud record for that key, verify
+  local version/checksum against cloud, print cache-sync status to stderr, and
+  then print the local value to stdout
+- `fetch -cloud` should read the v3 cloud record directly, bypassing the cache
+  for stdout; it should also compare that cloud record to the local cache and
+  print cache-sync status to stderr
+- `fetch -cloud -update-cache` may repair/update an existing complete local
+  cache for that one key after a successful v3 cloud read
+- `list -cloud` should list cloud keys while printing a local-vs-cloud cache
+  sync summary to stderr
+- `store` and `delete` should update the local cache and flush the corresponding
+  cloud sync before reporting success; a CLI write/delete must not exit with the
+  requested cloud operation merely queued
+- `flush-brain` should drain already queued local outbox work and report whether
+  pending cloud writes remain
+- any CLI command that intentionally touches the cloud should write local cache
+  sync information to stderr, keeping stdout reserved for command data
+- optional future provider-inspection commands can add richer cloud metadata
+  output, but should remain explicit cloud operations
 
 ## Cloud Sync Worker
 
