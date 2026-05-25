@@ -43,6 +43,8 @@ type BrainSyncPolicy struct {
 	MinWriteInterval           time.Duration
 	CoalesceWindow             time.Duration
 	FlushOnShutdownMaxDuration time.Duration
+	CheckpointVerifyRetries    int
+	CheckpointVerifyDelay      time.Duration
 }
 
 type RemoteBrainRecord struct {

@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	crand "crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -21,8 +22,7 @@ import (
 const brainCacheFormat = "gopherbot-brain-v3"
 
 type BrainCacheConfig struct {
-	Directory                   string `yaml:"Directory"`
-	RequireRemoteCleanOnStartup bool   `yaml:"RequireRemoteCleanOnStartup"`
+	Directory string `yaml:"Directory"`
 }
 
 func defaultBrainCacheConfig(cfg BrainCacheConfig) BrainCacheConfig {
@@ -41,7 +41,19 @@ type brainCacheControl struct {
 	CheckpointVers uint64                     `json:"checkpoint_version,omitempty"`
 	CheckpointSum  string                     `json:"checkpoint_checksum,omitempty"`
 	ImportedFrom   string                     `json:"imported_from,omitempty"`
+	CacheNonce     string                     `json:"cache_nonce,omitempty"`
+	ActiveLockID   string                     `json:"active_lock_id,omitempty"`
+	LastCloudWrite *brainCacheCloudWrite      `json:"last_cloud_write,omitempty"`
 	UpdatedAt      time.Time                  `json:"updated_at"`
+}
+
+type brainCacheCloudWrite struct {
+	Key       string    `json:"key"`
+	Version   uint64    `json:"version"`
+	Checksum  string    `json:"checksum,omitempty"`
+	Deleted   bool      `json:"deleted"`
+	UpdatedAt time.Time `json:"updated_at"`
+	SyncedAt  time.Time `json:"synced_at"`
 }
 
 type brainCacheMeta struct {
@@ -127,6 +139,7 @@ func openBrainCacheForImport(cfg BrainCacheConfig, identity robot.BrainBackendId
 			Complete:     false,
 			NextVersion:  1,
 			ImportedFrom: importedFrom,
+			CacheNonce:   randomBrainCacheID(),
 			UpdatedAt:    time.Now().UTC(),
 		}
 		if err := cb.writeControl(); err != nil {
@@ -151,6 +164,11 @@ func openExistingBrainCacheAny(cfg BrainCacheConfig) (*cachedBrain, error) {
 		return nil, fmt.Errorf("unsupported brain cache format %q", control.Format)
 	}
 	cb.control = control
+	if cb.control.CacheNonce == "" {
+		cb.control.CacheNonce = randomBrainCacheID()
+		cb.control.UpdatedAt = time.Now().UTC()
+		_ = cb.writeControl()
+	}
 	return cb, nil
 }
 
@@ -187,6 +205,7 @@ func (b *cachedBrain) openLocalOnly() error {
 			Provider:    robot.BrainBackendIdentity{Provider: "file", Scope: "local"},
 			Complete:    true,
 			NextVersion: 1,
+			CacheNonce:  randomBrainCacheID(),
 			UpdatedAt:   time.Now().UTC(),
 		}
 		return b.writeControl()
@@ -213,26 +232,8 @@ func (b *cachedBrain) openRemote() error {
 		return fmt.Errorf("local brain cache at %s is incomplete; run gopherbot pull-brain", b.cfg.Directory)
 	}
 	if b.control.CheckpointKey != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		record, exists, err := b.remote.Get(ctx, b.control.CheckpointKey)
-		if err != nil {
+		if err := b.verifyRemoteRecord(b.control.CheckpointKey, b.control.CheckpointVers, b.control.CheckpointSum, false, false); err != nil {
 			return fmt.Errorf("verifying brain cache checkpoint: %w", err)
-		}
-		if !exists || record.Format != brainCacheFormat {
-			return fmt.Errorf("remote brain is not v3-compatible; run gopherbot pull-brain")
-		}
-		if record.Version != b.control.CheckpointVers || record.Checksum != b.control.CheckpointSum {
-			return fmt.Errorf("remote brain checkpoint mismatch for %s; run gopherbot pull-brain", b.control.CheckpointKey)
-		}
-	}
-	if b.cfg.RequireRemoteCleanOnStartup {
-		pending, err := b.outboxEntries()
-		if err != nil {
-			return err
-		}
-		if len(pending) > 0 {
-			return fmt.Errorf("brain cache has %d pending cloud sync operation(s)", len(pending))
 		}
 	}
 	return nil
@@ -247,6 +248,7 @@ func (b *cachedBrain) hydrateFromV3Remote(identity robot.BrainBackendIdentity) e
 		Provider:    identity,
 		Complete:    false,
 		NextVersion: 1,
+		CacheNonce:  randomBrainCacheID(),
 		UpdatedAt:   time.Now().UTC(),
 	}
 	if err := b.writeControl(); err != nil {
@@ -345,6 +347,12 @@ func (b *cachedBrain) loadControl(identity robot.BrainBackendIdentity) error {
 	}
 	if control.NextVersion == 0 {
 		control.NextVersion = 1
+	}
+	if control.CacheNonce == "" {
+		control.CacheNonce = randomBrainCacheID()
+		control.UpdatedAt = time.Now().UTC()
+		b.control = control
+		return b.writeControl()
 	}
 	b.control = control
 	return nil
@@ -743,10 +751,26 @@ func (b *cachedBrain) syncOutboxEntryLocked(entry brainCacheOutboxEntry, enforce
 	if err := b.writeMeta(meta); err != nil {
 		return err
 	}
+	controlDirty := false
+	if entry.Key != brainLockKey {
+		b.control.LastCloudWrite = &brainCacheCloudWrite{
+			Key:       meta.Key,
+			Version:   meta.Version,
+			Checksum:  meta.Checksum,
+			Deleted:   meta.Deleted,
+			UpdatedAt: meta.UpdatedAt,
+			SyncedAt:  now,
+		}
+		controlDirty = true
+	}
 	if meta.Version >= b.control.CheckpointVers {
 		b.control.CheckpointKey = entry.Key
 		b.control.CheckpointVers = meta.Version
 		b.control.CheckpointSum = meta.Checksum
+		b.control.UpdatedAt = now
+		controlDirty = true
+	}
+	if controlDirty {
 		b.control.UpdatedAt = now
 		if err := b.writeControl(); err != nil {
 			return err
@@ -854,6 +878,102 @@ func encodeBrainCacheKey(key string) string {
 func checksumBytes(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+func randomBrainCacheID() string {
+	raw := make([]byte, 16)
+	if _, err := crand.Read(raw); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(raw)
+}
+
+func hashBrainCacheNonce(nonce string) string {
+	if nonce == "" {
+		return ""
+	}
+	return checksumBytes([]byte(nonce))
+}
+
+func (b *cachedBrain) latestDatabaseVersion() uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.latestDatabaseVersionLocked()
+}
+
+func (b *cachedBrain) latestDatabaseVersionLocked() uint64 {
+	if b.control.NextVersion == 0 {
+		return 0
+	}
+	return b.control.NextVersion - 1
+}
+
+func (b *cachedBrain) cacheNonceHash() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return hashBrainCacheNonce(b.control.CacheNonce)
+}
+
+func (b *cachedBrain) activeLockID() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.control.ActiveLockID
+}
+
+func (b *cachedBrain) setActiveLockID(lockID string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.control.ActiveLockID = lockID
+	b.control.UpdatedAt = time.Now().UTC()
+	return b.writeControl()
+}
+
+func (b *cachedBrain) verifyLastCloudWrite() error {
+	if b.remote == nil {
+		return nil
+	}
+	b.mu.Lock()
+	checkpoint := b.control.LastCloudWrite
+	b.mu.Unlock()
+	if checkpoint == nil || checkpoint.Key == "" {
+		return nil
+	}
+	return b.verifyRemoteRecord(checkpoint.Key, checkpoint.Version, checkpoint.Checksum, checkpoint.Deleted, true)
+}
+
+func (b *cachedBrain) verifyRemoteRecord(key string, version uint64, checksum string, deleted bool, checkDeleted bool) error {
+	attempts := b.policy.CheckpointVerifyRetries + 1
+	if attempts < 1 {
+		attempts = 1
+	}
+	delay := b.policy.CheckpointVerifyDelay
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 && delay > 0 {
+			time.Sleep(delay)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		record, exists, err := b.remote.Get(ctx, key)
+		cancel()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if !exists {
+			lastErr = fmt.Errorf("remote memory %s is missing", key)
+			continue
+		}
+		if record.Format != brainCacheFormat {
+			lastErr = fmt.Errorf("remote memory %s is not v3-compatible", key)
+			continue
+		}
+		if record.Version == version && record.Checksum == checksum && (!checkDeleted || record.Deleted == deleted) {
+			return nil
+		}
+		lastErr = fmt.Errorf("remote memory %s checkpoint mismatch: local version %d checksum %s deleted %t, remote version %d checksum %s deleted %t",
+			key, version, checksum, deleted, record.Version, record.Checksum, record.Deleted)
+	}
+	return lastErr
 }
 
 func (b *cachedBrain) writePayload(key string, payload []byte) error {

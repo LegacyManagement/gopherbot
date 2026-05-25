@@ -14,11 +14,14 @@ Startup proceeds through the following phases **in order**:
 6. **Encryption initialization** – Set up brain encryption
 7. **Pre-connect configuration load** – Load basic configuration without running scripts
 8. **Brain initialization** – Start the brain provider
-9. **Internal module initialization** – Prepare shared runtime helpers such as ssh-agent, ssh git helpers, and Yaegi's shared GOPATH tree
-10. **Connector runtime initialization** – Initialize primary + configured secondary connectors
-11. **Post-connect configuration load** – Full configuration with plugin initialization
-12. **Runtime git branch capture** – Best-effort detection of current/default startup branch for admin observability
-13. **Queue provider runtime startup** – Start configured queue providers after the robot runtime is ready
+9. **Brain lock/cache safety** – Verify or hydrate the cache, acquire the brain lock, and replay pending outbox writes before command readiness
+10. **Internal module initialization** – Prepare shared runtime helpers such as ssh-agent, ssh git helpers, and Yaegi's shared GOPATH tree
+11. **Connector runtime initialization** – Initialize primary + configured secondary connectors while the startup gate remains closed
+12. **Post-connect configuration load** – Full configuration with plugin initialization
+13. **Initial plugin quiescence** – Wait for the first plugin initialization batch to complete
+14. **Runtime git branch capture** – Best-effort detection of current/default startup branch for admin observability
+15. **Queue provider runtime startup** – Start configured queue providers after first plugin initialization
+16. **Readiness signal** – Release the startup gate and signal that the robot is initialized
 
 Internal exception:
 - `pipeline-child-exec` is an internal command used by multiprocess task execution; it exits after one child-task run and bypasses normal robot startup phases.
@@ -300,7 +303,6 @@ engine-owned config section:
 ```yaml
 BrainCache:
   Directory: state/brain-cache
-  RequireRemoteCleanOnStartup: false
 ```
 
 The default directory follows `GOPHER_STATE_DIRECTORY` through
@@ -328,12 +330,31 @@ For remote brains, normal startup behavior is:
    exists, fail cleanly with instructions to run `gopherbot pull-brain`.
 4. If a complete local cache exists but the checkpoint no longer matches the
    remote, fail cleanly with instructions to run `gopherbot pull-brain`.
+5. Read the remote `bot:instance-lock` directly. A `held` lock fails startup
+   unless it matches the local cache nonce and active lock ID, which allows a
+   same-VM crash restart to reclaim its own lock.
+6. A `released` lock is accepted only when its database version is not newer
+   than the local cache's latest database version. If another cache advanced
+   the brain, startup fails and the operator must run `gopherbot pull-brain`.
+7. Verify the last successful non-lock cloud write recorded by the local cache.
+   Providers may retry this verification through their `BrainSyncPolicy`;
+   Cloudflare KV uses a longer default delay to account for propagation.
+8. Acquire a fresh `held` lock, replay any durable local outbox entries, and
+   only then continue toward command readiness.
 
 Runtime memory reads, lists, stores, and deletes go through the local cache.
 Cloud writes are queued to a durable local outbox and written by a sync worker
 using the provider's coalesce window, minimum write interval, and daily write
 budget. The brain instance lock key is synced immediately because it protects
 single-robot ownership.
+
+The startup gate remains closed until brain/cache safety checks, outbox replay,
+and the first plugin initialization batch have completed. Commands received
+while the gate is closed are answered with:
+
+```text
+(the robot is still starting up, please wait and try your command again later)
+```
 
 V2 brain compatibility is deliberately CLI-only:
 
@@ -661,16 +682,20 @@ Shutdown can be triggered by admin commands, pipeline tasks, or process signals.
 3. `stop()` first triggers prompt shutdown signaling so in-progress `Prompt*` waits return `Interrupted` immediately.
 4. Stop queue provider runtimes so external queues stop introducing new work.
 5. `stop()` waits for running pipelines (`state.Wait()`).
-6. Stop brain loop (`brainQuit()`), flush the brain provider until all delayed
-   writes reach the backing store, then stop connector runtimes.
-7. Stop signal handler goroutine.
-8. Emit restart flag on `done` channel.
+6. Flush the brain provider until all delayed normal writes reach the backing
+   store.
+7. Write `bot:instance-lock` as `released` with the local cache database
+   version, then stop the brain loop (`brainQuit()`), which performs a final
+   flush for the release record.
+8. Stop connector runtimes.
+9. Stop signal handler goroutine.
+10. Emit restart flag on `done` channel.
 
 This keeps shutdown deterministic even when interactive prompts are using long
 timeout windows. For cloud-backed brains, shutdown and restart are gated on both
-pipeline completion and `SimpleBrain.Flush()` completion; the local brain cache
-will keep retrying pending cloud writes and emit periodic warnings until the
-outbox is empty.
+pipeline completion and `SimpleBrain.Flush()` completion before lock release;
+the local brain cache will keep retrying pending cloud writes and emit periodic
+warnings until the outbox is empty.
 
 ## Key Files
 

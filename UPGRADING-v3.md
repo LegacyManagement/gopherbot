@@ -54,7 +54,6 @@ Installed defaults now include:
 ```yaml
 BrainCache:
   Directory: {{ env "GOPHER_BRAIN_CACHE_DIRECTORY" | default "<state>/brain-cache" }}
-  RequireRemoteCleanOnStartup: false
 ```
 
 `<state>` follows `GOPHER_STATE_DIRECTORY` and defaults to `state`.
@@ -65,10 +64,12 @@ Configuration responsibilities are split:
 - `Brain` selects the provider: `file`, `mem`, `cloudflare`, `dynamo`, or
   `firestore`.
 - `BrainCache.Directory` selects the local persistent cache path.
-- `BrainCache.RequireRemoteCleanOnStartup`, when true, refuses startup if the
-  local cache still has pending cloud-sync operations.
 - Provider credentials stay in `conf/brains/<Brain>.yaml` under `BrainConfig`.
 - Provider-sensitive sync settings live with the provider, not in `BrainCache`.
+- The v3 engine always replays pending local outbox writes before command
+  readiness; there is no configurable "start dirty" mode.
+- Remove any custom `BrainCache.RequireRemoteCleanOnStartup` setting; it is no
+  longer a valid v3 configuration key.
 
 Cloudflare KV accepts these optional `BrainConfig` sync settings:
 
@@ -78,6 +79,8 @@ BrainConfig:
   CloudWriteMinIntervalMillis: 1100
   CoalesceWindowMillis: 2000
   FlushOnShutdownMaxMillis: 10000
+  CheckpointVerifyRetries: 5
+  CheckpointVerifyDelayMillis: 2000
 ```
 
 The defaults are intended to keep normal Cloudflare KV use inside the free tier.
@@ -94,6 +97,31 @@ BrainConfig:
 ```
 
 After import, normal `Brain: file` runtime uses `BrainCache.Directory`.
+
+### Startup, shutdown, and lock behavior
+
+Cloud-backed v3 robots use `bot:instance-lock` as persistent ownership metadata.
+Clean shutdown no longer deletes this memory. Instead, shutdown waits for
+running pipelines, flushes pending normal brain writes, writes the lock as
+`released` with the local cache database version, and then performs a final
+brain flush before exit.
+
+Startup accepts a released lock when the local cache is at least as new as the
+released database version. If the released lock is newer than the local cache,
+another cache has advanced the brain; run `gopherbot pull-brain` or point the
+robot at the correct `BrainCache.Directory`.
+
+If startup finds a held lock, it fails unless the lock matches the same local
+cache nonce and active lock ID. That matching case is treated as same-VM crash
+recovery: the new process reclaims its own previous lock, verifies the last
+successful cloud write, replays the durable local outbox, and only then becomes
+ready.
+
+While startup is not ready to run commands, the robot responds to commands with:
+
+```text
+(the robot is still starting up, please wait and try your command again later)
+```
 
 ### Cloud-backed upgrade paths
 

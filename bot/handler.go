@@ -473,6 +473,10 @@ func (h handler) IncomingMessage(inc *robot.ConnectorMessage) {
 	} else {
 		Log(robot.Debug, "Message on protocol '%s': '%s'/id '%s' from user '%s' in channel '%s'/thread '%s' (threaded: %t); isCommand: %t; cmdMode: %s", incomingProtocol, message, inc.MessageID, userName, logChannel, inc.ThreadID, inc.ThreadedMessage, isCommand, cmdMode)
 	}
+	if isCommand && isStartupGateClosed() {
+		w.Say(startupGateMessage)
+		return
+	}
 	go w.handleMessage()
 }
 

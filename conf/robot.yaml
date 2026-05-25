@@ -98,7 +98,6 @@ DefaultProtocol: {{ env "GOPHER_DEFAULT_PROTOCOL" | default $proto }}
 Brain: {{ $brain }}
 BrainCache:
   Directory: {{ env "GOPHER_BRAIN_CACHE_DIRECTORY" | default $defcache }}
-  RequireRemoteCleanOnStartup: false
 LogDest: {{ $logdest }}
 LogLevel: {{ $loglevel }}
 

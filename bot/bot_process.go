@@ -58,6 +58,7 @@ var signalBreak = struct {
 // internal state tracking
 var state struct {
 	shuttingDown     bool // to prevent new plugins from starting
+	startingUp       bool // to prevent commands before startup readiness
 	restart          bool // indicate stop and restart vs. stop only, for bootstrapping
 	pipelinesRunning int  // a count of how many plugins are currently running
 	sync.WaitGroup        // for keeping track of running plugins
@@ -160,6 +161,7 @@ func initBot() {
 	}
 
 	state.shuttingDown = false
+	state.startingUp = true
 	runtimeQueueProviders.Lock()
 	runtimeQueueProviders.initialized = false
 	runtimeQueueProviders.runtimes = map[string]*managedQueueProvider{}
@@ -453,8 +455,10 @@ func run() {
 	if err := loadConfig(false); err != nil {
 		Log(robot.Fatal, "Loading full/post-connect configuration: %v", err)
 	}
+	waitForPluginInitQuiescence()
 	initializeRuntimeGitState()
 	startQueueProviderRuntimes()
+	releaseStartupGate()
 	Log(robot.Info, "Robot is initialized and running")
 	signalRobotInitialized()
 	if hint := startupSSHHint(startMode, currentCfg.protocol, currentCfg.adminUsers); hint != "" {
@@ -494,6 +498,11 @@ func stop() {
 	triggerPromptShutdownSignal()
 	shutdownQueueProviderRuntimes()
 	state.Wait()
+	if interfaces.brain != nil {
+		if err := interfaces.brain.Flush(); err != nil {
+			Log(robot.Error, "Brain flush failed before releasing instance lock: %v", err)
+		}
+	}
 	releaseBrainLock()
 	brainQuit()
 	shutdownConnectorRuntimes()

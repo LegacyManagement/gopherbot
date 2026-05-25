@@ -444,7 +444,6 @@ Add a top-level `BrainCache` section:
 ```yaml
 BrainCache:
   Directory: {{ env "GOPHER_BRAIN_CACHE_DIRECTORY" | default "<GOPHER_STATE_DIRECTORY-or-state>/brain-cache" }}
-  RequireRemoteCleanOnStartup: false
 ```
 
 Required semantics:
@@ -453,8 +452,8 @@ Required semantics:
   cloud-backed brains.
 - Runtime remote format is always v3 for cloud-backed brains; there is no
   `RemoteFormat` in engine config.
-- `RequireRemoteCleanOnStartup` defaults to `false`; when true, cloud-backed
-  startup can require the local outbox to drain before readiness.
+- The engine always replays durable local outbox entries before command
+  readiness; there is no configurable "start dirty" mode.
 - Provider-sensitive sync values are not configured in `BrainCache`. The cache
   asks the selected remote backend for sync policy values, so changing from
   Cloudflare KV to DynamoDB or Firestore does not require cache config changes.
@@ -546,21 +545,11 @@ When `Brain` is a cloud backend and a complete local cache exists:
 This checkpoint read is the only cloud read required in the normal healthy case.
 The v3 engine requires the configured cloud backend to be v3-compatible.
 
-If there are durable outbox entries, the cache can still be considered locally
-ready as long as provider identity matches and the cache was previously
-complete. The sync worker resumes queued writes. Do not perform a full scan just
-because local cloud writes remain queued; that would punish CFKV and defeat the
-cache purpose.
-
-Optional future config can force remote-clean startup for operators who prefer
-blocking until the outbox drains:
-
-```yaml
-BrainCache:
-  RequireRemoteCleanOnStartup: false
-```
-
-Default should be `false`.
+If there are durable outbox entries, startup replays them from the local cache
+before command readiness. Do not perform a full remote scan just because local
+cloud writes remain queued; replaying the outbox uses the local cache as the
+authoritative source for known-unsynced writes and avoids punishing CFKV on the
+healthy fast path.
 
 ### Cloud-Backed First-Start Hydration
 
@@ -604,25 +593,23 @@ Error messages should name the provider and the recommended command:
 - `gopherbot restore-brain` when a local-only cache exists and the operator has
   just configured a new empty cloud backend
 
-### Future Startup Gate Hook
+### Startup Gate Hook
 
-The later startup-gating story should use a separate `startingUp` state, not
-`state.shuttingDown`.
+Startup gating uses a separate `startingUp` state, not `state.shuttingDown`.
 
 Placement:
 
 - keep `IgnoreUsers` and `IgnoreUnlistedUsers` as first filters in
   `handler.IncomingMessage`
-- after user filtering and command detection, but before worker creation, reply
-  to commands with:
+- after user filtering, command detection, and worker construction, but before
+  pipeline execution, reply to commands with:
 
 ```text
-Sorry, I'm still starting up, please wait and try your command again later
+(the robot is still starting up, please wait and try your command again later)
 ```
 
-This hook should not be required for the normal cloud-backed fast path. It is
-for bounded startup work such as first initialization and any intentionally
-blocking cache sync mode.
+This hook covers bounded startup work such as first plugin initialization,
+first-start hydration, and startup outbox replay.
 
 ## CLI Commands
 

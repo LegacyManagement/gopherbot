@@ -7,6 +7,7 @@ Entries cite files like `main.go` and symbols like `Start` in `bot/start.go` for
 - AI-focused docbase root: `aidocs/README.md`
 - Top-level component map: `aidocs/COMPONENT_MAP.md`
 - Brain cache implementation handoff: `aidocs/BRAIN_CACHE_IMPLEMENTATION_PLAN.md`.
+- Brain lock/cache startup safety plan: `aidocs/brain_lock_cache.md`.
 - Startup flow narrative: `aidocs/STARTUP_FLOW.md`
 - High-level v3 goals (project-level): `GOALS_v3.md`
 - v3 compatibility priorities and migration policy: `aidocs/V3_COMPATIBILITY_CONTRACT.md`
@@ -33,14 +34,15 @@ Entries cite files like `main.go` and symbols like `Start` in `bot/start.go` for
 
 ## bot/
 
-- Engine entrypoints: `bot/start.go` (func `Start`), `bot/bot_process.go` (funcs `initBot`, `run`, `stop`), `bot/startup_ready.go` (startup readiness signal for integration harnesses).
+- Engine entrypoints: `bot/start.go` (func `Start`), `bot/bot_process.go` (funcs `initBot`, `run`, `stop`), `bot/startup_ready.go` (startup readiness signal for integration harnesses), `bot/startup_gate.go` (command gating before startup readiness).
 - Runtime connector orchestration: `bot/connector_runtime.go` (runtime manager, protocol routing, lifecycle controls).
 - Runtime queue provider orchestration: `bot/queue_runtime.go` (provider lifecycle, queue body parsing, UUID-to-job matching, and queued job pipeline start).
 - Bot-side connector capability/registration consumption: `bot/connector_capabilities.go` (shared registration lookup, runtime capability lookup, and test overrides).
 - Connector/brain/history handler implementation: `bot/handler.go` (implements shared `robot.Handler`, including `GetBotInfo()` for connector init).
 - Bot-side provider registration consumption: `bot/provider_registrations.go` (shared brain/history registration lookup + test overrides).
-- Engine-owned brain cache and migration CLI: `bot/brain_cache.go`,
-  `bot/brain_provider.go`, `bot/brain_cli.go`.
+- Engine-owned brain cache, instance lock, and migration CLI:
+  `bot/brain_cache.go`, `bot/brain_lock.go`, `bot/brain_provider.go`,
+  `bot/brain_cli.go`.
 - Pipeline execution + privilege separation internals: `bot/run_pipelines.go`, `bot/task_execution.go`, `bot/task_execution_child.go`, `bot/pipeline_rpc.go`, `bot/pipeline_rpc_interpreter.go`, `bot/pipeline_rpc_javascript.go`, `bot/pipeline_rpc_gsh.go`, `bot/pipeline_rpc_yaegi.go`, `bot/calltask.go`, `bot/privsep.go`, `bot/privsep_darwin.go`, `bot/privsep_process.go`.
 - Startup mode and config loading: `bot/config_load.go` (funcs `detectStartupMode`, `getConfigFile`), `bot/conf.go` (func `loadConfig`).
 - Runtime git branch observability: `bot/git_runtime.go` (startup capture + runtime snapshot for info/admin commands), with privileged sync task registration in `bot/pipe_tasks.go` (`git-sync-state`).

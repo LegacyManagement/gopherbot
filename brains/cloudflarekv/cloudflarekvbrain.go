@@ -24,6 +24,8 @@ type cfKVBrainConfig struct {
 	CloudWriteMinIntervalMillis int
 	CoalesceWindowMillis        int
 	FlushOnShutdownMaxMillis    int
+	CheckpointVerifyRetries     int
+	CheckpointVerifyDelayMillis int
 }
 
 type cfKVRemoteBrain struct {
@@ -58,6 +60,12 @@ func remoteProvider(r robot.Handler) robot.RemoteBrainBackend {
 	if cfg.FlushOnShutdownMaxMillis <= 0 {
 		cfg.FlushOnShutdownMaxMillis = 10000
 	}
+	if cfg.CheckpointVerifyRetries <= 0 {
+		cfg.CheckpointVerifyRetries = 5
+	}
+	if cfg.CheckpointVerifyDelayMillis <= 0 {
+		cfg.CheckpointVerifyDelayMillis = 2000
+	}
 	b := &cfKVRemoteBrain{
 		cfg:     cfg,
 		handler: r,
@@ -80,6 +88,8 @@ func (b *cfKVRemoteBrain) SyncPolicy() robot.BrainSyncPolicy {
 		MinWriteInterval:           time.Duration(b.cfg.CloudWriteMinIntervalMillis) * time.Millisecond,
 		CoalesceWindow:             time.Duration(b.cfg.CoalesceWindowMillis) * time.Millisecond,
 		FlushOnShutdownMaxDuration: time.Duration(b.cfg.FlushOnShutdownMaxMillis) * time.Millisecond,
+		CheckpointVerifyRetries:    b.cfg.CheckpointVerifyRetries,
+		CheckpointVerifyDelay:      time.Duration(b.cfg.CheckpointVerifyDelayMillis) * time.Millisecond,
 	}
 }
 

@@ -117,9 +117,13 @@ Engine-owned cache settings:
 ```yaml
 BrainCache:
   Directory: state/brain-cache
-  RequireRemoteCleanOnStartup: false
 ```
 
 Provider credentials and provider-sensitive sync tuning stay in
 `conf/brains/<Brain>.yaml`. The cache asks the remote backend for sync policy
 instead of duplicating provider-specific settings in `BrainCache`.
+
+The v3 engine always repairs or verifies cloud-backed cache state before
+command readiness. Pending local outbox entries are replayed during startup, and
+there is no configurable mode that allows command handling while cloud
+persistence is known to be dirty.
