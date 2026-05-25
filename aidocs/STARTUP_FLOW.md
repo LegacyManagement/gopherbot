@@ -362,10 +362,10 @@ V2 brain compatibility is deliberately CLI-only:
   into the local v3 cache without modifying cloud by default.
 - `gopherbot pull-brain -upgrade-cloud-v3` additionally writes upgraded v3
   records back to the cloud, subject to provider/CLI write budget.
-- `gopherbot restore-brain -remote-format v3` writes the local cache to the
-  configured remote in v3 format.
-- `gopherbot restore-brain -remote-format v2` writes v2-compatible remote data
-  for rollback to v2 code.
+- `gopherbot restore-brain` writes the local cache to the configured remote in
+  v3 format.
+- `gopherbot restore-brain -v2` writes v2-compatible remote data for rollback to
+  v2 code.
 - `restore-brain -force` also removes remote keys not present in the local
   cache.
 

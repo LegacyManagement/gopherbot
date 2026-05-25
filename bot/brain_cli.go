@@ -22,10 +22,19 @@ type brainPullOptions struct {
 }
 
 type brainRestoreOptions struct {
-	force        bool
-	dryRun       bool
-	remoteFormat string
-	budget       int
+	force  bool
+	dryRun bool
+	v2     bool
+	budget int
+}
+
+const v2RemoteBrainMigrationHint = "run gopherbot pull-brain -upgrade-cloud-v3 or run gopherbot pull-brain followed by gopherbot restore-brain before starting v3 runtime"
+
+func (opts brainRestoreOptions) effectiveRemoteFormat() string {
+	if opts.v2 {
+		return "v2"
+	}
+	return "v3"
 }
 
 func cliPullBrain(opts brainPullOptions) error {
@@ -42,7 +51,7 @@ func cliPullBrain(opts brainPullOptions) error {
 		return err
 	}
 	defer remote.Shutdown()
-	cache, err := openBrainCacheForImport(currentCfg.brainCache, remote.Identity(), "", opts.force)
+	cache, err := openBrainCacheForImport(currentCfg.brainCache, "", opts.force)
 	if err != nil {
 		return err
 	}
@@ -71,7 +80,7 @@ func cliPullBrain(opts brainPullOptions) error {
 		}
 	}
 	if opts.dryRun {
-		reportCloudListSyncStatus(remote.Identity(), metas)
+		reportCloudListSyncStatus(metas)
 		fmt.Printf("Remote provider: %s\nTotal keys: %d\nV2 keys: %d\nV3 keys: %d\nWould modify remote: %t\n", providerName, len(metas), v2Count, v3Count, opts.upgradeCloudV3)
 		return nil
 	}
@@ -146,19 +155,19 @@ func cliPullBrain(opts brainPullOptions) error {
 	}
 	if opts.upgradeCloudV3 {
 		if records, err := listAllRemoteBrainMetadata(ctx, remote); err == nil {
-			reportCloudListSyncStatus(remote.Identity(), records)
+			reportCloudListSyncStatus(records)
 		} else {
 			fmt.Fprintf(os.Stderr, "Brain cache sync: unable to refresh cloud status: %v\n", err)
 		}
 	} else {
-		reportCloudListSyncStatus(remote.Identity(), metas)
+		reportCloudListSyncStatus(metas)
 	}
 	fmt.Printf("Pulled %d memories into local brain cache (%d v2, %d v3, %d downloaded)\n", len(metas), v2Count, v3Count, downloaded)
 	if budgetExhausted {
-		return fmt.Errorf("cloud write budget exhausted after %d writes; local cache is complete, but the remote brain is not fully v3 yet; rerun restore-brain -remote-format v3 to continue", cloudWrites)
+		return fmt.Errorf("cloud write budget exhausted after %d writes; local cache is complete, but the remote brain is not fully v3 yet; rerun restore-brain to continue", cloudWrites)
 	}
 	if v2Count > 0 && !opts.upgradeCloudV3 {
-		fmt.Println("Remote brain is still v2/unversioned; run pull-brain -upgrade-cloud-v3 or restore-brain -remote-format v3 before starting v3 runtime.")
+		fmt.Printf("Remote brain is still v2/unversioned; %s.\n", v2RemoteBrainMigrationHint)
 	}
 	return nil
 }
@@ -172,7 +181,7 @@ func cliPullFileBrain(opts brainPullOptions) error {
 	if strings.TrimSpace(cfg.BrainDirectory) == "" {
 		return fmt.Errorf("BrainConfig.BrainDirectory is required to import legacy file brain data")
 	}
-	cache, err := openBrainCacheForImport(currentCfg.brainCache, robot.BrainBackendIdentity{Provider: "file", Scope: "local"}, "file", opts.force)
+	cache, err := openBrainCacheForImport(currentCfg.brainCache, "file", opts.force)
 	if err != nil {
 		return err
 	}
@@ -217,15 +226,13 @@ func cliPullFileBrain(opts brainPullOptions) error {
 
 func cliRestoreBrain(opts brainRestoreOptions) error {
 	initCLIConfigOnly()
-	if opts.remoteFormat != "v2" && opts.remoteFormat != "v3" {
-		return fmt.Errorf("restore-brain requires -remote-format v2 or -remote-format v3")
-	}
+	remoteFormat := opts.effectiveRemoteFormat()
 	remote, legacy, providerName, err := initRemoteBrainForCLI()
 	if err != nil {
 		return err
 	}
 	defer remote.Shutdown()
-	if opts.remoteFormat == "v2" && legacy == nil {
+	if remoteFormat == "v2" && legacy == nil {
 		return fmt.Errorf("brain provider %q cannot write v2-compatible records", providerName)
 	}
 	cache, err := openExistingBrainCacheAny(currentCfg.brainCache)
@@ -246,7 +253,7 @@ func cliRestoreBrain(opts brainRestoreOptions) error {
 	writes := 0
 	writeBudget := effectiveCloudWriteBudget(remote, opts.budget)
 	if opts.force {
-		deleted, err := restoreBrainDeleteRemoteExtras(ctx, cache, remote, legacy, localKeys, opts.remoteFormat, opts.dryRun, writeBudget, &writes)
+		deleted, err := restoreBrainDeleteRemoteExtras(ctx, cache, remote, legacy, localKeys, remoteFormat, opts.dryRun, writeBudget, &writes)
 		if err != nil {
 			return err
 		}
@@ -269,7 +276,7 @@ func cliRestoreBrain(opts brainRestoreOptions) error {
 		if writeBudget > 0 && writes >= writeBudget {
 			return fmt.Errorf("write budget exhausted after %d writes; rerun restore-brain to continue", writes)
 		}
-		switch opts.remoteFormat {
+		switch remoteFormat {
 		case "v2":
 			if err := legacy.PutV2(ctx, robot.LegacyBrainRecord{Key: key, Payload: *payload}); err != nil {
 				return err
@@ -300,20 +307,20 @@ func cliRestoreBrain(opts brainRestoreOptions) error {
 	}
 	if opts.dryRun {
 		if records, err := listAllRemoteBrainMetadata(ctx, remote); err == nil {
-			reportCloudListSyncStatus(remote.Identity(), records)
+			reportCloudListSyncStatus(records)
 		} else {
 			fmt.Fprintf(os.Stderr, "Brain cache sync: unable to inspect cloud status: %v\n", err)
 		}
-		fmt.Printf("Would write %d memories to %s in %s format\n", writes, providerName, opts.remoteFormat)
+		fmt.Printf("Would write %d memories to %s in %s format\n", writes, providerName, remoteFormat)
 		return nil
 	}
-	fmt.Printf("Wrote %d memories to %s in %s format\n", writes, providerName, opts.remoteFormat)
+	fmt.Printf("Wrote %d memories to %s in %s format\n", writes, providerName, remoteFormat)
 	if records, err := listAllRemoteBrainMetadata(ctx, remote); err == nil {
-		reportCloudListSyncStatus(remote.Identity(), records)
+		reportCloudListSyncStatus(records)
 	} else {
 		fmt.Fprintf(os.Stderr, "Brain cache sync: unable to inspect cloud status: %v\n", err)
 	}
-	if opts.remoteFormat == "v2" {
+	if remoteFormat == "v2" {
 		fmt.Println("Remote brain is now v2-compatible and is not valid for v3 runtime startup.")
 	}
 	return nil

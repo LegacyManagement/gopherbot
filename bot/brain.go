@@ -256,15 +256,18 @@ loop:
 	}
 }
 
-func brainQuit() {
+func brainQuit() bool {
 	reply := make(chan struct{})
 	brainChanEvents <- quitRequest{reply}
 	Log(robot.Debug, "Brain exiting on quit")
 	<-reply
+	clean := true
 	if err := interfaces.brain.Flush(); err != nil {
 		Log(robot.Error, "Brain flush failed during shutdown: %v", err)
+		clean = false
 	}
 	interfaces.brain.Shutdown()
+	return clean
 }
 
 const keyRegex = `^[\w:-]+$` // keys can only be word chars + separators (: and -)

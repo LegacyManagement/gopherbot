@@ -33,18 +33,17 @@ func defaultBrainCacheConfig(cfg BrainCacheConfig) BrainCacheConfig {
 }
 
 type brainCacheControl struct {
-	Format         string                     `json:"format"`
-	Provider       robot.BrainBackendIdentity `json:"provider"`
-	Complete       bool                       `json:"complete"`
-	NextVersion    uint64                     `json:"next_version"`
-	CheckpointKey  string                     `json:"checkpoint_key,omitempty"`
-	CheckpointVers uint64                     `json:"checkpoint_version,omitempty"`
-	CheckpointSum  string                     `json:"checkpoint_checksum,omitempty"`
-	ImportedFrom   string                     `json:"imported_from,omitempty"`
-	CacheNonce     string                     `json:"cache_nonce,omitempty"`
-	ActiveLockID   string                     `json:"active_lock_id,omitempty"`
-	LastCloudWrite *brainCacheCloudWrite      `json:"last_cloud_write,omitempty"`
-	UpdatedAt      time.Time                  `json:"updated_at"`
+	Format         string                `json:"format"`
+	Complete       bool                  `json:"complete"`
+	NextVersion    uint64                `json:"next_version"`
+	CheckpointKey  string                `json:"checkpoint_key,omitempty"`
+	CheckpointVers uint64                `json:"checkpoint_version,omitempty"`
+	CheckpointSum  string                `json:"checkpoint_checksum,omitempty"`
+	ImportedFrom   string                `json:"imported_from,omitempty"`
+	CacheNonce     string                `json:"cache_nonce,omitempty"`
+	ActiveLockID   string                `json:"active_lock_id,omitempty"`
+	LastCloudWrite *brainCacheCloudWrite `json:"last_cloud_write,omitempty"`
+	UpdatedAt      time.Time             `json:"updated_at"`
 }
 
 type brainCacheCloudWrite struct {
@@ -117,7 +116,7 @@ func newRemoteCachedBrain(cfg BrainCacheConfig, remote robot.RemoteBrainBackend)
 	return cb, nil
 }
 
-func openBrainCacheForImport(cfg BrainCacheConfig, identity robot.BrainBackendIdentity, importedFrom string, force bool) (*cachedBrain, error) {
+func openBrainCacheForImport(cfg BrainCacheConfig, importedFrom string, force bool) (*cachedBrain, error) {
 	cfg = defaultBrainCacheConfig(cfg)
 	if force {
 		if err := os.RemoveAll(cfg.Directory); err != nil {
@@ -129,13 +128,12 @@ func openBrainCacheForImport(cfg BrainCacheConfig, identity robot.BrainBackendId
 		return nil, err
 	}
 	if _, err := os.Stat(cb.controlPath()); err == nil {
-		if err := cb.loadControl(identity); err != nil {
+		if err := cb.loadControl(); err != nil {
 			return nil, err
 		}
 	} else {
 		cb.control = brainCacheControl{
 			Format:       brainCacheFormat,
-			Provider:     identity,
 			Complete:     false,
 			NextVersion:  1,
 			ImportedFrom: importedFrom,
@@ -172,10 +170,10 @@ func openExistingBrainCacheAny(cfg BrainCacheConfig) (*cachedBrain, error) {
 	return cb, nil
 }
 
-func openExistingBrainCacheForIdentity(cfg BrainCacheConfig, identity robot.BrainBackendIdentity) (*cachedBrain, error) {
+func openExistingBrainCacheComplete(cfg BrainCacheConfig) (*cachedBrain, error) {
 	cfg = defaultBrainCacheConfig(cfg)
 	cb := &cachedBrain{cfg: cfg}
-	if err := cb.loadControl(identity); err != nil {
+	if err := cb.loadControl(); err != nil {
 		return nil, err
 	}
 	if !cb.control.Complete {
@@ -202,7 +200,6 @@ func (b *cachedBrain) openLocalOnly() error {
 	if _, err := os.Stat(controlPath); errors.Is(err, os.ErrNotExist) {
 		b.control = brainCacheControl{
 			Format:      brainCacheFormat,
-			Provider:    robot.BrainBackendIdentity{Provider: "file", Scope: "local"},
 			Complete:    true,
 			NextVersion: 1,
 			CacheNonce:  randomBrainCacheID(),
@@ -210,7 +207,7 @@ func (b *cachedBrain) openLocalOnly() error {
 		}
 		return b.writeControl()
 	}
-	return b.loadControl(robot.BrainBackendIdentity{Provider: "file", Scope: "local"})
+	return b.loadControl()
 }
 
 func (b *cachedBrain) openRemote() error {
@@ -220,12 +217,11 @@ func (b *cachedBrain) openRemote() error {
 	if err := b.ensureDirs(); err != nil {
 		return err
 	}
-	identity := b.remote.Identity()
 	controlPath := b.controlPath()
 	if _, err := os.Stat(controlPath); errors.Is(err, os.ErrNotExist) {
-		return b.hydrateFromV3Remote(identity)
+		return b.hydrateFromV3Remote()
 	}
-	if err := b.loadControl(identity); err != nil {
+	if err := b.loadControl(); err != nil {
 		return err
 	}
 	if !b.control.Complete {
@@ -239,13 +235,12 @@ func (b *cachedBrain) openRemote() error {
 	return nil
 }
 
-func (b *cachedBrain) hydrateFromV3Remote(identity robot.BrainBackendIdentity) error {
+func (b *cachedBrain) hydrateFromV3Remote() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	b.control = brainCacheControl{
 		Format:      brainCacheFormat,
-		Provider:    identity,
 		Complete:    false,
 		NextVersion: 1,
 		CacheNonce:  randomBrainCacheID(),
@@ -263,7 +258,7 @@ func (b *cachedBrain) hydrateFromV3Remote(identity robot.BrainBackendIdentity) e
 		}
 		for _, record := range page.Records {
 			if record.Format != brainCacheFormat {
-				return fmt.Errorf("remote brain contains v2/unversioned memories; run gopherbot pull-brain")
+				return fmt.Errorf("remote brain contains v2/unversioned memories; %s", v2RemoteBrainMigrationHint)
 			}
 			metas = append(metas, record)
 		}
@@ -287,7 +282,7 @@ func (b *cachedBrain) hydrateFromV3Remote(identity robot.BrainBackendIdentity) e
 			continue
 		}
 		if record.Format != brainCacheFormat {
-			return fmt.Errorf("remote brain contains v2/unversioned memory %s; run gopherbot pull-brain", meta.Key)
+			return fmt.Errorf("remote brain contains v2/unversioned memory %s; %s", meta.Key, v2RemoteBrainMigrationHint)
 		}
 		localMeta := brainCacheMeta{
 			Format:    brainCacheFormat,
@@ -329,7 +324,7 @@ func (b *cachedBrain) hydrateFromV3Remote(identity robot.BrainBackendIdentity) e
 	return b.writeControl()
 }
 
-func (b *cachedBrain) loadControl(identity robot.BrainBackendIdentity) error {
+func (b *cachedBrain) loadControl() error {
 	var control brainCacheControl
 	data, err := os.ReadFile(b.controlPath())
 	if err != nil {
@@ -340,10 +335,6 @@ func (b *cachedBrain) loadControl(identity robot.BrainBackendIdentity) error {
 	}
 	if control.Format != brainCacheFormat {
 		return fmt.Errorf("unsupported brain cache format %q", control.Format)
-	}
-	if control.Provider != identity {
-		return fmt.Errorf("brain cache provider identity mismatch: cache is %s/%s, config is %s/%s; run gopherbot pull-brain or choose another BrainCache.Directory",
-			control.Provider.Provider, control.Provider.Scope, identity.Provider, identity.Scope)
 	}
 	if control.NextVersion == 0 {
 		control.NextVersion = 1

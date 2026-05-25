@@ -233,14 +233,15 @@ Startup for cloud-backed cached brains should be:
    - a remote `released` lock is the normal new-VM path and is accepted when
      its database version is covered by the hydrated cache
    - if the remote contains v2/unversioned records, hard fail and instruct the
-     owner to run the CLI migration path
+     owner to run the CLI migration path with `pull-brain` and v3-default
+     `restore-brain`
 5. If the lock is `held` by a different `LockID` or cache nonce, hard fail with the existing
    operator diagnostics.
 6. If the lock is `held` by the same `ActiveLockID` and cache nonce, treat this as crash
    recovery:
    - log warnings that the previous process did not release the lock
    - optionally, when on the same host, confirm the recorded PID is gone
-   - continue only if the local cache/provider identity matches
+   - continue only if the local cache nonce and active lock ID match
 7. If the lock is `released` and `DatabaseVersion` is greater than the local
    latest database version, hard fail:
    - this means another robot/cache advanced the brain
@@ -337,8 +338,8 @@ advanced the brain. Recovery remains explicit:
 
 - `gopherbot pull-brain` refreshes local cache from a v3 remote or imports v2
   through the CLI-only path
-- `gopherbot restore-brain -remote-format v3` writes local cache to the v3
-  remote when the owner intentionally chooses local cache as authoritative
+- `gopherbot restore-brain` writes local cache to the v3 remote when the owner
+  intentionally chooses local cache as authoritative
 - `gopherbot fetch -validate-cloud <key>`, `fetch -cloud <key>`,
   `fetch -cloud -update-cache <key>`, and `list -cloud` remain inspection and
   targeted repair tools
@@ -346,7 +347,7 @@ advanced the brain. Recovery remains explicit:
 Potential new CLI helpers:
 
 - `gopherbot brain-status` to report local version, lock state, last cloud
-  checkpoint, outbox count, and provider identity
+  checkpoint, and outbox count
 - `gopherbot repair-brain-lock` only if the owner explicitly needs a manual
   stale-lock release path; this should require clear confirmation or flags and
   should not be used by normal startup

@@ -143,6 +143,11 @@ func TestProcessCLIHelpBrainMemoryCommandsShowCacheSemantics(t *testing.T) {
 			"Usage: gopherbot list [options]",
 			"-cloud",
 		},
+		"restore-brain": {
+			"Usage: gopherbot restore-brain [-v2] [options]",
+			"Defaults to v3 output",
+			"-v2",
+		},
 	} {
 		output := captureStdout(t, func() {
 			code := processCLI("help", []string{command})
@@ -155,6 +160,15 @@ func TestProcessCLIHelpBrainMemoryCommandsShowCacheSemantics(t *testing.T) {
 				t.Fatalf("processCLI(help %s) missing %q in output:\n%s", command, needle, output)
 			}
 		}
+	}
+}
+
+func TestRestoreBrainDefaultsToV3WithV2Override(t *testing.T) {
+	if got := (brainRestoreOptions{}).effectiveRemoteFormat(); got != "v3" {
+		t.Fatalf("default restore format = %q, want v3", got)
+	}
+	if got := (brainRestoreOptions{v2: true}).effectiveRemoteFormat(); got != "v2" {
+		t.Fatalf("-v2 restore format = %q, want v2", got)
 	}
 }
 

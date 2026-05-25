@@ -31,8 +31,8 @@ shutdown.
 
 `BrainCache.Directory` contains:
 
-- `control.json`: cache format, backend identity, completion state, local
-  version counter, and remote checkpoint.
+- `control.json`: cache format, completion state, local version counter, cache
+  nonce/lock state, and remote checkpoint.
 - `data/`: encrypted payload blobs keyed by encoded memory key.
 - `meta/`: v3 metadata per memory key.
 - `outbox/`: durable pending cloud writes keyed by memory key.
@@ -87,11 +87,15 @@ V2 compatibility is CLI-only:
   into the local v3 cache. It does not modify cloud by default.
 - `gopherbot pull-brain -upgrade-cloud-v3` additionally writes upgraded v3
   records to cloud.
-- `gopherbot restore-brain -remote-format v3` writes the local cache to the
-  configured cloud provider in v3 format.
-- `gopherbot restore-brain -remote-format v2` writes v2-compatible cloud records
-  for rollback to v2 code.
+- `gopherbot restore-brain` writes the local cache to the configured cloud
+  provider in v3 format.
+- `gopherbot restore-brain -v2` writes v2-compatible cloud records for rollback
+  to v2 code.
 - `restore-brain -force` removes remote keys absent from the local cache.
+
+The local cache does not store or enforce the cloud driver identity. If two
+configured remote brains are in sync with the cache's database version and
+checkpoint, the same `BrainCache.Directory` can be used with either backend.
 
 This keeps normal startup deterministic and avoids hidden one-way upgrades.
 

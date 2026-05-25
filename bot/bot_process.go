@@ -498,13 +498,19 @@ func stop() {
 	triggerPromptShutdownSignal()
 	shutdownQueueProviderRuntimes()
 	state.Wait()
+	brainFlushed := false
 	if interfaces.brain != nil {
 		if err := interfaces.brain.Flush(); err != nil {
 			Log(robot.Error, "Brain flush failed before releasing instance lock: %v", err)
+		} else {
+			brainFlushed = true
 		}
 	}
-	releaseBrainLock()
-	brainQuit()
+	lockReleased := releaseBrainLock()
+	brainStopped := brainQuit()
+	if brainFlushed && lockReleased && brainStopped {
+		Log(robot.Info, "Brain shutdown clean: pending brain writes flushed, instance lock released, and brain stopped")
+	}
 	shutdownConnectorRuntimes()
 	signalBreak.Lock()
 	if signalBreak.ch != nil {

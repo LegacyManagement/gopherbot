@@ -275,12 +275,14 @@ func setCurrentBrainLockID(lockID string) error {
 // releaseBrainLock writes the instance lock as released with the local database
 // version. It is called during stop() after running pipelines complete and
 // before brainQuit().
-func releaseBrainLock() {
+func releaseBrainLock() bool {
 	brain := interfaces.brain
 	if brain == nil {
-		return
+		return false
 	}
 	if err := writeBrainLock(brainLockReleased); err != nil {
 		Log(robot.Warn, "Unable to release brain instance lock: %v", err)
+		return false
 	}
+	return true
 }

@@ -140,7 +140,7 @@ For an existing v2 robot using Cloudflare KV, DynamoDB, or Firestore:
 3. Write v3 cloud records before starting the v3 runtime:
 
    ```bash
-   gopherbot restore-brain -remote-format v3
+   gopherbot restore-brain
    ```
 
    Or combine import and cloud upgrade:
@@ -152,8 +152,8 @@ For an existing v2 robot using Cloudflare KV, DynamoDB, or Firestore:
 4. Start the v3 robot.
 
 If a provider write budget stops the cloud upgrade partway through, the local
-cache remains usable and complete. Re-run `restore-brain -remote-format v3`
-with an appropriate `-budget` or provider budget until all cloud records are v3.
+cache remains usable and complete. Re-run `restore-brain` with an appropriate
+`-budget` or provider budget until all cloud records are v3.
 
 ### Local file brain upgrade
 
@@ -173,10 +173,15 @@ To later move that development robot to a cloud provider:
 2. Run:
 
    ```bash
-   gopherbot restore-brain -remote-format v3
+   gopherbot restore-brain
    ```
 
 3. Start the v3 robot.
+
+The local cache does not store the cloud driver identity. After the new remote
+is populated with v3 records, startup safety is based on the remote lock
+database version and checkpoint verification, not on whether the driver is
+Cloudflare, DynamoDB, or Firestore.
 
 ### Rollback flexibility
 
@@ -184,7 +189,7 @@ The CLI can also write v2-compatible cloud data so a robot owner can deliberatel
 return to v2 code:
 
 ```bash
-gopherbot restore-brain -remote-format v2
+gopherbot restore-brain -v2
 ```
 
 After this command, the remote brain is v2-compatible and is not valid for v3
@@ -197,7 +202,8 @@ Useful command options:
 - `pull-brain -upgrade-cloud-v3` imports locally and writes upgraded v3 cloud
   records.
 - `pull-brain -budget <n>` limits cloud writes for that run.
-- `restore-brain -remote-format v2|v3` chooses the cloud output format.
+- `restore-brain` writes v3 cloud output by default.
+- `restore-brain -v2` writes v2-compatible cloud output for deliberate rollback.
 - `restore-brain -force` removes remote keys that are not present in the local
   cache.
 - `restore-brain -dry-run` reports planned writes/removals.

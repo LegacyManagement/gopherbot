@@ -245,18 +245,19 @@ func cliCommands() []cliCommandSpec {
 		},
 		{
 			Name:         "restore-brain",
-			SummaryUsage: "restore-brain -remote-format <v2|v3> [options]",
+			SummaryUsage: "restore-brain [-v2] [options]",
 			Summary:      "write the local brain cache to a remote provider",
 			HelpLines: []string{
-				"Usage: gopherbot restore-brain -remote-format <v2|v3> [options]",
+				"Usage: gopherbot restore-brain [-v2] [options]",
 				"",
 				"Writes the local v3 cache back to the configured remote brain.",
-				"Use v3 before starting the v3 runtime; use v2 for rollback export.",
+				"Defaults to v3 output before starting the v3 runtime.",
+				"Use -v2 only for rollback export to v2-compatible cloud data.",
 				"",
 				"Options:",
-				"  -remote-format v2|v3  remote format to write",
 				"  -dry-run              report planned work without writing",
 				"  -force                allow initializing/replacing remote state",
+				"  -v2                   write v2-compatible cloud data instead of v3",
 				"  -budget <n>           maximum cloud writes for this run",
 			},
 			RunsBeforeInit: true,
@@ -461,7 +462,7 @@ func processCLI(command string, args []string) int {
 	var restoreBrainOpts brainRestoreOptions
 	restoreBrainFlags.BoolVar(&restoreBrainOpts.force, "force", false, "allow initializing/replacing remote state")
 	restoreBrainFlags.BoolVar(&restoreBrainOpts.dryRun, "dry-run", false, "report planned work without writing")
-	restoreBrainFlags.StringVar(&restoreBrainOpts.remoteFormat, "remote-format", "", "remote format to write: v2 or v3")
+	restoreBrainFlags.BoolVar(&restoreBrainOpts.v2, "v2", false, "write v2-compatible cloud data instead of v3")
 	restoreBrainFlags.IntVar(&restoreBrainOpts.budget, "budget", 0, "maximum cloud writes")
 
 	switch command {
@@ -919,10 +920,6 @@ func initCLILocalBrainProviderForRead() error {
 	if err != nil {
 		return fmt.Errorf("opening local brain cache: %w; run gopherbot pull-brain or use fetch -cloud", err)
 	}
-	if cache.control.Provider.Provider != provider {
-		return fmt.Errorf("brain cache provider mismatch: cache is %s/%s, config is %s; use an explicit cloud command or choose another BrainCache.Directory",
-			cache.control.Provider.Provider, cache.control.Provider.Scope, provider)
-	}
 	interfaces.brain = cache
 	return nil
 }
@@ -1258,7 +1255,7 @@ func cliFetchCloud(opts cliFetchOptions) error {
 		return err
 	}
 	if opts.updateCache {
-		cache, err := openExistingBrainCacheForIdentity(currentCfg.brainCache, remote.Identity())
+		cache, err := openExistingBrainCacheComplete(currentCfg.brainCache)
 		if err != nil {
 			return err
 		}
@@ -1266,7 +1263,7 @@ func cliFetchCloud(opts cliFetchOptions) error {
 			return err
 		}
 	}
-	reportCloudMemorySyncStatus(remote.Identity(), record)
+	reportCloudMemorySyncStatus(record)
 	payload, err := decryptMemoryPayload(record.Payload)
 	if err != nil {
 		return err
@@ -1362,10 +1359,10 @@ func writeFetchedMemory(payload []byte, b64 bool) {
 	os.Stdout.Write([]byte("\n"))
 }
 
-func reportCloudMemorySyncStatus(identity robot.BrainBackendIdentity, record robot.RemoteBrainRecord) {
-	cache, err := openExistingBrainCacheForIdentity(currentCfg.brainCache, identity)
+func reportCloudMemorySyncStatus(record robot.RemoteBrainRecord) {
+	cache, err := openExistingBrainCacheComplete(currentCfg.brainCache)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Brain cache sync: local cache unavailable or mismatched (%v)\n", err)
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local cache unavailable (%v)\n", err)
 		return
 	}
 	cache.mu.Lock()
@@ -1411,10 +1408,10 @@ func reportCloudMemorySyncStatus(identity robot.BrainBackendIdentity, record rob
 		record.Key, meta.Version, localChecksum, record.Version, record.Checksum)
 }
 
-func reportCloudListSyncStatus(identity robot.BrainBackendIdentity, records []robot.RemoteBrainRecord) {
-	cache, err := openExistingBrainCacheForIdentity(currentCfg.brainCache, identity)
+func reportCloudListSyncStatus(records []robot.RemoteBrainRecord) {
+	cache, err := openExistingBrainCacheComplete(currentCfg.brainCache)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Brain cache sync: local cache unavailable or mismatched (%v)\n", err)
+		fmt.Fprintf(os.Stderr, "Brain cache sync: local cache unavailable (%v)\n", err)
 		return
 	}
 	localKeys, err := cache.List()
@@ -1556,7 +1553,7 @@ func cliListCloud() error {
 		}
 		cursor = page.NextCursor
 	}
-	reportCloudListSyncStatus(remote.Identity(), records)
+	reportCloudListSyncStatus(records)
 	sort.Strings(keys)
 	if len(keys) == 0 {
 		fmt.Println("No cloud memories found")

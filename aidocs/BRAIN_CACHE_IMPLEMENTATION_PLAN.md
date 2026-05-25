@@ -259,12 +259,12 @@ V2 cloud compatibility is available only through CLI conversion commands:
 - `pull-brain` can read v2-compatible cloud records into the local v3 cache
 - `pull-brain -upgrade-cloud-v3` can read v2-compatible cloud records and write
   upgraded v3 records/checkpoint back to the cloud
-- `restore-brain -remote-format v2` can export the local cache as v2-compatible
+- `restore-brain -v2` can export the local cache as v2-compatible
   cloud records before the owner reverts to v2 code
-- `restore-brain -remote-format v3` can export the local cache as v3 cloud
-  records before starting v3 code
+- `restore-brain` can export the local cache as v3 cloud records before starting
+  v3 code
 
-The engine-owned cache must not contain v2 remote-format branches in normal
+The engine-owned cache must not contain v2 cloud-format branches in normal
 startup or runtime sync. If the v3 runtime sees a v2/unversioned cloud brain, it
 should exit with an actionable CLI instruction.
 
@@ -292,18 +292,13 @@ Recommended defaults:
 - data files contain encrypted payload bytes directly, not base64
 - metadata files are JSON
 - writes use temp-file-plus-rename for atomic replacement
-- `control.json` tracks schema version, provider identity, next local version,
-  cache completeness, last verified v3 checkpoint, and generic sync state
+- `control.json` tracks schema version, next local version, cache completeness,
+  cache nonce/active lock state, last verified v3 checkpoint, and generic sync
+  state
 
-Provider identity should include non-secret backend identity:
-
-- provider name
-- Cloudflare account ID + namespace ID
-- DynamoDB region + table name
-- Firestore project ID + database ID + collection
-
-If the configured provider identity does not match the local cache identity,
-startup should exit cleanly and tell the admin which command to run.
+The local cache does not store or enforce the cloud provider/driver identity.
+Startup safety comes from the remote lock database version plus checkpoint and
+last-cloud-write verification against the configured backend.
 
 ### V3 Metadata
 
@@ -460,8 +455,7 @@ Required semantics:
 
 ### Provider Config Files
 
-Provider credentials and non-secret provider identity remain in
-`conf/brains/<provider>.yaml`.
+Provider credentials remain in `conf/brains/<provider>.yaml`.
 
 Cloudflare:
 
@@ -471,14 +465,12 @@ Cloudflare:
 - add optional provider-owned sync policy fields such as write budget, minimum
   write interval, coalesce window, and flush-on-shutdown bound; defaults should
   be conservative for Cloudflare KV free-tier usage
-- `AccountID` + `NamespaceID` are part of cache provider identity
 
 DynamoDB:
 
 - keep `TableName`, `Region`, `AccessKeyID`, and `SecretAccessKey`
 - add optional provider-owned sync policy fields only if needed; defaults can
   be much less restrictive than Cloudflare KV
-- `Region` + `TableName` are part of cache provider identity
 
 Firestore:
 
@@ -486,8 +478,6 @@ Firestore:
   `OperationTimeoutSeconds`
 - add optional provider-owned sync policy fields only if needed; defaults can
   be much less restrictive than Cloudflare KV
-- resolved `ProjectID` + `DatabaseID` + `Collection` are part of cache provider
-  identity
 
 File brain:
 
@@ -502,13 +492,15 @@ File brain:
 `gopherbot pull-brain -upgrade-cloud-v3` explicitly upgrades remote cloud
 records to v3 format.
 
-`gopherbot restore-brain -remote-format v2|v3` explicitly chooses the remote
-format to write from local cache.
+`gopherbot restore-brain` writes v3-format remote records from local cache by
+default. `gopherbot restore-brain -v2` explicitly chooses the v2-compatible
+rollback/export format.
 
-When no CLI format flag is supplied, commands should avoid modifying the remote
+When no CLI format flag is supplied, `restore-brain` chooses v3 because that is
+the only cloud format accepted by normal v3 runtime startup. V2 export remains
+an explicit `-v2` opt-in. Other commands should avoid modifying the remote
 backend if doing so would be ambiguous or could cause an accidental one-way cloud
-upgrade. The CLI should exit with an actionable message asking for an explicit
-`-remote-format` or `-upgrade-cloud-v3`.
+upgrade, and should ask for an explicit flag such as `-upgrade-cloud-v3`.
 
 ## Startup Behavior
 
@@ -533,14 +525,13 @@ using local-only storage.
 When `Brain` is a cloud backend and a complete local cache exists:
 
 1. open local cache
-2. verify local provider identity matches current config
-3. verify cache completeness flag is true
-4. verify there is a v3 checkpoint key in local control state
-5. point-read that checkpoint key from the cloud backend and compare remote
+2. verify cache completeness flag is true
+3. verify there is a v3 checkpoint key in local control state
+4. point-read that checkpoint key from the cloud backend and compare remote
    format/version/checksum/deleted with local metadata
-6. start sync worker using provider-owned sync policy
-7. assign `interfaces.brain`
-8. continue startup
+5. start sync worker using provider-owned sync policy
+6. assign `interfaces.brain`
+7. continue startup
 
 This checkpoint read is the only cloud read required in the normal healthy case.
 The v3 engine requires the configured cloud backend to be v3-compatible.
@@ -559,7 +550,8 @@ this as the normal first-start path for a new VM:
 1. construct the remote backend
 2. list remote metadata with provider pagination
 3. if any remote memory is v2/unversioned, exit cleanly and instruct the owner
-   to run `gopherbot pull-brain`
+   to run the CLI migration flow with `gopherbot pull-brain` and v3-default
+   `gopherbot restore-brain`
 4. if the remote is empty, initialize an empty v3 local cache and continue
 5. if all remote memories are v3-compatible, fetch payloads as needed and write
    the complete local cache
@@ -578,7 +570,6 @@ v3-compatible remote data. V2/unversioned remote data still requires
 Startup should exit cleanly, before connectors start, when:
 
 - cache schema is unsupported
-- cache provider identity does not match config
 - cache completeness flag is false
 - local checkpoint is missing
 - remote checkpoint is missing
@@ -657,7 +648,7 @@ that writes upgraded v3 records and checkpoint metadata to the cloud. If the
 configured write budget prevents finishing that optional cloud upgrade in one
 run, the command should leave resumable progress and report that the v3 runtime
 must not be started against that cloud brain until the v3 cloud upgrade or
-`restore-brain -remote-format v3` completes.
+`restore-brain` completes.
 
 Provider details:
 
@@ -689,14 +680,13 @@ Behavior:
 1. run config/encryption initialization only
 2. open local cache
 3. construct configured remote backend
-4. verify provider identity; if this is a new remote, initialize identity after
-   operator confirmation or `-force`
-5. list local non-deleted records and tombstones
-6. write records to cloud using the requested remote format
-7. for remote format `v3`, write v3 metadata/checkpoint records
-8. for remote format `v2`, write only v2-compatible encrypted values and apply
+4. list local non-deleted records and tombstones
+5. write records to cloud using v3 format by default, or v2 format when `-v2`
+   is set
+6. for remote format `v3`, write v3 metadata/checkpoint records
+7. for remote format `v2`, write only v2-compatible encrypted values and apply
    tombstones as physical deletes
-9. update local synced state when writing v3 format; when writing v2 format,
+8. update local synced state when writing v3 format; when writing v2 format,
    report that the export is intended for rollback and is not a valid v3 runtime
    remote brain
 
@@ -706,14 +696,13 @@ Recommended flags:
 gopherbot restore-brain
 gopherbot restore-brain -dry-run
 gopherbot restore-brain -force
-gopherbot restore-brain -remote-format v2
-gopherbot restore-brain -remote-format v3
+gopherbot restore-brain -v2
 gopherbot restore-brain -budget <writes>
 ```
 
-`restore-brain` should require an explicit `-remote-format` unless the command
-can infer a safe default from context without modifying the remote unexpectedly.
-This avoids accidental one-way upgrades.
+`restore-brain` defaults to v3 output because v3 cloud records are required for
+normal v3 runtime startup. `restore-brain -v2` is the explicit rollback/export
+path for writing v2-compatible cloud data.
 
 `restore-brain` must respect provider write budgets. If it cannot finish in one
 run, it should leave clear progress information and be safely resumable.
@@ -1008,7 +997,7 @@ Validation:
   only.
 - Make `pull-brain` default to local import without remote modification.
 - Add explicit `pull-brain -upgrade-cloud-v3`.
-- Add `restore-brain -remote-format v2|v3`.
+- Add v3-default `restore-brain` plus `restore-brain -v2`.
 - Update existing memory CLI commands to use the local cache.
 - Add dry-run and resumability behavior.
 
@@ -1024,13 +1013,11 @@ Validation:
 - Update all docs listed above.
 - Add `UPGRADING-v3.md` steps.
 - Add examples for:
-  - existing cloud v2 robot: run `pull-brain`, then
-    `restore-brain -remote-format v3` or `pull-brain -upgrade-cloud-v3`, then
-    start v3
+  - existing cloud v2 robot: run `pull-brain`, then `restore-brain` or
+    `pull-brain -upgrade-cloud-v3`, then start v3
   - dev file-only robot: keep `Brain: file`
-  - dev-to-cloud robot: configure cloud backend, run `restore-brain
-    -remote-format v3`, then start
-  - rollback/export: run `restore-brain -remote-format v2`, then restart with
+  - dev-to-cloud robot: configure cloud backend, run `restore-brain`, then start
+  - rollback/export: run `restore-brain -v2`, then restart with
     v2 code if needed
 
 Validation:
@@ -1047,16 +1034,17 @@ Validation:
 - A cloud-backed robot without a local cache hydrates from an already
   v3-compatible remote brain and then continues startup.
 - A cloud-backed robot without a local cache exits cleanly only when remote
-  memories are v2/unversioned, and tells the admin to run `pull-brain`.
+  memories are v2/unversioned, and tells the admin to run the CLI migration
+  flow through `pull-brain` and v3-default `restore-brain`.
 - A v2 cloud brain can be imported with `pull-brain` without modifying cloud
   data by default; this does not by itself make the cloud brain valid for v3
   runtime startup.
 - `pull-brain -upgrade-cloud-v3` writes upgraded v3 records/checkpoint back to
   the cloud.
 - A local-only dev brain can be uploaded with `restore-brain`.
-- `restore-brain -remote-format v2` writes v2-compatible cloud data suitable
+- `restore-brain -v2` writes v2-compatible cloud data suitable
   for rollback to v2 code.
-- `restore-brain -remote-format v3` writes the v3 cloud data required before
+- `restore-brain` writes the v3 cloud data required before
   starting the v3 engine against that cloud brain.
 - Runtime writes return after durable local commit, not after cloud write.
 - Cloud writes are coalesced, metered, resumable, and durable across crashes.

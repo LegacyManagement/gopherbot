@@ -2,6 +2,7 @@ package firestorebrain
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -25,15 +26,46 @@ type brainConfig struct {
 type storedMemory struct {
 	Content   []byte    `firestore:"content"`
 	Format    string    `firestore:"format"`
-	Version   uint64    `firestore:"version"`
+	Version   int64     `firestore:"version"`
 	Checksum  string    `firestore:"checksum"`
 	Deleted   bool      `firestore:"deleted"`
 	UpdatedAt time.Time `firestore:"updated_at"`
 }
 
+const maxFirestoreBrainVersion = uint64(1<<63 - 1)
+
 type firestoreBrain struct {
 	cfg    brainConfig
 	client *firestoreapi.Client
+}
+
+func storedMemoryFromRemoteRecord(record robot.RemoteBrainRecord) (storedMemory, error) {
+	if record.Version > maxFirestoreBrainVersion {
+		return storedMemory{}, fmt.Errorf("firestore brain version %d exceeds signed 64-bit storage limit", record.Version)
+	}
+	return storedMemory{
+		Content:   record.Payload,
+		Format:    brainCacheFormat,
+		Version:   int64(record.Version),
+		Checksum:  record.Checksum,
+		Deleted:   record.Deleted,
+		UpdatedAt: record.UpdatedAt,
+	}, nil
+}
+
+func remoteRecordFromStoredMemory(key string, stored storedMemory) (robot.RemoteBrainRecord, error) {
+	if stored.Version < 0 {
+		return robot.RemoteBrainRecord{Key: key}, fmt.Errorf("firestore brain memory %s has negative version %d", key, stored.Version)
+	}
+	return robot.RemoteBrainRecord{
+		Key:       key,
+		Payload:   stored.Content,
+		Format:    stored.Format,
+		Version:   uint64(stored.Version),
+		Checksum:  stored.Checksum,
+		Deleted:   stored.Deleted,
+		UpdatedAt: stored.UpdatedAt,
+	}, nil
 }
 
 func defaultedConfig(cfg brainConfig) brainConfig {
@@ -217,26 +249,19 @@ func (b *firestoreRemoteBrain) Get(ctx context.Context, key string) (robot.Remot
 	if stored.Format != brainCacheFormat {
 		return robot.RemoteBrainRecord{Key: key}, true, status.Error(codes.FailedPrecondition, "not a v3 brain record")
 	}
-	return robot.RemoteBrainRecord{
-		Key:       key,
-		Payload:   stored.Content,
-		Format:    stored.Format,
-		Version:   stored.Version,
-		Checksum:  stored.Checksum,
-		Deleted:   stored.Deleted,
-		UpdatedAt: stored.UpdatedAt,
-	}, true, nil
+	record, err := remoteRecordFromStoredMemory(key, stored)
+	if err != nil {
+		return robot.RemoteBrainRecord{Key: key}, true, err
+	}
+	return record, true, nil
 }
 
 func (b *firestoreRemoteBrain) Put(ctx context.Context, record robot.RemoteBrainRecord) error {
-	_, err := b.client.Collection(b.cfg.Collection).Doc(record.Key).Set(ctx, storedMemory{
-		Content:   record.Payload,
-		Format:    brainCacheFormat,
-		Version:   record.Version,
-		Checksum:  record.Checksum,
-		Deleted:   record.Deleted,
-		UpdatedAt: record.UpdatedAt,
-	})
+	stored, err := storedMemoryFromRemoteRecord(record)
+	if err != nil {
+		return err
+	}
+	_, err = b.client.Collection(b.cfg.Collection).Doc(record.Key).Set(ctx, stored)
 	return err
 }
 
@@ -261,14 +286,12 @@ func (b *firestoreRemoteBrain) ListMetadata(ctx context.Context, cursor string, 
 		if err := doc.DataTo(&stored); err != nil {
 			return robot.RemoteBrainPage{}, err
 		}
-		records = append(records, robot.RemoteBrainRecord{
-			Key:       ref.ID,
-			Format:    stored.Format,
-			Version:   stored.Version,
-			Checksum:  stored.Checksum,
-			Deleted:   stored.Deleted,
-			UpdatedAt: stored.UpdatedAt,
-		})
+		record, err := remoteRecordFromStoredMemory(ref.ID, stored)
+		if err != nil {
+			return robot.RemoteBrainPage{}, err
+		}
+		record.Payload = nil
+		records = append(records, record)
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].Key < records[j].Key })
 	return robot.RemoteBrainPage{Records: records}, nil

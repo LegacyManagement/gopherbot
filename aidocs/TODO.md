@@ -149,6 +149,10 @@ PluginApprovers:
     is useful and safe there
   - update `aidocs/STARTUP_FLOW.md` and focused tests if shutdown semantics
     change
+- [x] Improve `restore-brain` v3 migration defaults and startup guidance.
+  `restore-brain` now defaults to v3 output, `restore-brain -v2` is the
+  explicit rollback/export path, and startup errors for v2/unversioned cloud
+  brains point operators at the v3-default recovery flow.
 - [ ] LOW PRIORITY STRETCH: Add expiring persisted source-IP allow-list support
   to the WireGuard/VPN plugin.
   Current Floyd-local behavior keeps `ALLOW_VPN` as a host-local iptables chain

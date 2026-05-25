@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -228,6 +229,9 @@ func TestRemoteBrainCacheRejectsV2RemoteOnFirstStart(t *testing.T) {
 	if !strings.Contains(err.Error(), "pull-brain") {
 		t.Fatalf("startup error %q does not mention pull-brain", err)
 	}
+	if !strings.Contains(err.Error(), "restore-brain") {
+		t.Fatalf("startup error %q does not mention restore-brain", err)
+	}
 }
 
 func TestRemoteBrainCacheWriteBudgetLeavesPendingOutbox(t *testing.T) {
@@ -364,6 +368,32 @@ func TestRemoteBrainCacheTracksLastCloudWriteExcludingLock(t *testing.T) {
 	}
 	if brain.control.LastCloudWrite == nil || brain.control.LastCloudWrite.Key != "alpha" {
 		t.Fatalf("lock write changed LastCloudWrite to %#v", brain.control.LastCloudWrite)
+	}
+}
+
+func TestBrainCacheControlDoesNotStoreProviderIdentity(t *testing.T) {
+	dir := t.TempDir()
+	cache, err := openBrainCacheForImport(BrainCacheConfig{Directory: dir}, "", false)
+	if err != nil {
+		t.Fatalf("openBrainCacheForImport: %v", err)
+	}
+	if err := cache.finalizeImport("v3"); err != nil {
+		t.Fatalf("finalizeImport: %v", err)
+	}
+
+	reopened, err := openExistingBrainCacheComplete(BrainCacheConfig{Directory: dir})
+	if err != nil {
+		t.Fatalf("openExistingBrainCacheComplete: %v", err)
+	}
+	if !reopened.control.Complete {
+		t.Fatal("reopened cache should be complete")
+	}
+	control, err := os.ReadFile(reopened.controlPath())
+	if err != nil {
+		t.Fatalf("reading control: %v", err)
+	}
+	if strings.Contains(string(control), "provider") {
+		t.Fatalf("control.json should not store provider identity: %s", string(control))
 	}
 }
 
