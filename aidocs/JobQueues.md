@@ -73,11 +73,12 @@ Identity model:
 - Parse queue bodies of the form:
 
 ```text
-<uuid> <shell-escaped arguments>
+<uuid>:<timestamp> <shell-escaped arguments>
 ```
 
-- Match only the first UUID-width bytes of the body against configured job
-  UUIDs.
+- Match the UUID prefix against configured job UUIDs.
+- Require a 12-15 digit numeric timestamp after the UUID and colon.
+- Deduplicate matching queue triggers by `<uuid>:<timestamp>` for 140 seconds.
 - Preserve job arguments with spaces by parsing shell-escaped argument text.
 - Log an error for malformed or unknown UUID bodies, and log an info event when
   a job is triggered from a queue.
@@ -272,9 +273,12 @@ Rules:
 - Bodies shorter than 36 bytes are invalid.
 - Only bytes `[0:36]` are considered for job selection.
 - The UUID prefix must parse as a UUID.
-- UUID-only payloads are valid and mean the job has zero arguments.
-- If the body has more data, byte 36 must be a single ASCII space.
-- Argument text begins at byte 37.
+- Byte 36 must be a single ASCII colon.
+- A numeric timestamp of 12-15 digits must follow the colon.
+- Timestamp-only payloads are valid and mean the job has zero arguments.
+- If the body has more data after the timestamp, the next byte must be a single
+  ASCII space.
+- Argument text begins after that space.
 - Empty argument text means zero arguments.
 - The argument parser tokenizes shell-escaped words without command execution,
   variable expansion, globbing, or file access.
@@ -286,13 +290,27 @@ Rules:
 Examples:
 
 ```text
-1104df4c-feeb-43ab-8c85-83663288cea9 alpha two\ words
-1104df4c-feeb-43ab-8c85-83663288cea9 'alpha beta' gamma
+1104df4c-feeb-43ab-8c85-83663288cea9:17642656976077
+1104df4c-feeb-43ab-8c85-83663288cea9:17642656976077 alpha two\ words
+1104df4c-feeb-43ab-8c85-83663288cea9:17642656976077 'alpha beta' gamma
 ```
 
 The existing `resources/gcloud/scripts/queue-job.sh` POC matches this contract
-by using `printf "%q "` for each argument and sending the payload as
-`text/plain`.
+by calculating the timestamp with `echo "$(( $(date +%s%N) / 100000 ))"`,
+using `printf "%q "` for each argument, and sending the payload as `text/plain`.
+
+## Queue Trigger Deduplication
+
+The engine records each `<uuid>:<timestamp>` pair for 140 seconds after the
+UUID maps to a configured job. During that retention window, another queue
+payload with the same UUID and timestamp is acknowledged and discarded before a
+second pipeline is started.
+
+Deduplication is intentionally in the engine queue handler, not in queue
+providers, so all provider backends share the same behavior. The dedupe key is
+stored only in memory and is cleaned opportunistically as new queue messages are
+handled. The timestamp is only an idempotency token; it is not interpreted as a
+wall-clock freshness check.
 
 ## Job Matching And Pipeline Start
 
@@ -308,15 +326,18 @@ Flow:
 2. Parse and validate the queue body.
 3. Lookup the normalized UUID in the current enabled-job UUID map.
 4. If no job matches, log `Error` and return `QueueAck`.
-5. Parse shell-escaped arguments.
-6. Validate supplied arguments against the job's `Arguments` matchers:
+5. Record the `<uuid>:<timestamp>` dedupe key for 140 seconds.
+6. If the dedupe key is already present, log `Info` and return `QueueAck`
+   without starting another pipeline.
+7. Parse shell-escaped arguments.
+8. Validate supplied arguments against the job's `Arguments` matchers:
    - Too few arguments is an error.
    - Existing behavior for extra arguments is preserved.
    - Invalid argument values log `Error`.
    - Queue triggers never prompt for missing arguments.
-7. Log `Info` that job `<name>` was triggered from queue provider `<provider>`.
-8. Start the job pipeline with a new pipeline type, `queuedJob`.
-9. Return `QueueAck` once the pipeline has been accepted for execution.
+9. Log `Info` that job `<name>` was triggered from queue provider `<provider>`.
+10. Start the job pipeline with a new pipeline type, `queuedJob`.
+11. Return `QueueAck` once the pipeline has been accepted for execution.
 
 The worker should be built like a scheduled job worker:
 
@@ -390,15 +411,19 @@ Google resource alignment:
   `job-triggers` and subscription `job-triggers-pull`.
 - `resources/gcloud/scripts/create-job-webhook-resources.sh` deploys a Cloud
   Function with a UUID-bearing URL and publisher service account.
-- `resources/gcloud/scripts/webhook/index.js` publishes the raw request body.
-- `resources/gcloud/scripts/queue-job.sh` sends the body contract expected by
-  the engine.
+- `resources/gcloud/scripts/webhook/index.js` validates the raw request body
+  has the required UUID, timestamp, and argument separator shape before
+  publishing it.
+- `resources/gcloud/scripts/queue-job.sh` calculates a 14-digit timestamp and
+  sends the body contract expected by the engine.
 
 ## Security Notes
 
 - Queue provider config is engine/provider config, not extension config.
 - `UUIDTrigger` values are bearer trigger secrets and should normally be stored
   in `conf/variables/<environment>.yaml` under `Secrets`.
+- Queue timestamps are idempotency tokens paired with a UUID trigger. They are
+  not authorization material.
 - Logs must never print configured UUIDs or full queue bodies.
 - Unknown UUIDs should log only a short diagnostic such as provider name,
   provider message ID, and body length.
@@ -414,6 +439,7 @@ Google resource alignment:
 First-slice semantics are accepted-trigger acknowledgment:
 
 - Ack after the engine validates the queue body and accepts the job pipeline.
+- Ack duplicate UUID/timestamp pairs after discarding the duplicate.
 - Ack malformed bodies and unknown UUIDs after logging an error.
 - Retry only when the engine is shutting down or temporarily unable to make a
   routing decision.
@@ -431,7 +457,8 @@ Implications:
 ### 1) Change Summary
 
 - Slice name: job queue provider facility.
-- Goal: allow remote queues to trigger configured jobs by UUID and arguments.
+- Goal: allow remote queues to trigger configured jobs by UUID/timestamp
+  prefixes and arguments.
 - Out of scope: completion-coupled queue retries, user-scheduled jobs, extension
   queue APIs, and connector-based queue routing.
 
@@ -447,7 +474,8 @@ Expected implementation files and directories:
 - `bot/config_validate.go`: `conf/queues/*.yaml` validation.
 - `bot/tasks.go`: `Job.UUIDTrigger`.
 - `bot/taskconf.go`: UUID trigger parsing, validation, duplicate detection.
-- `bot/queue_runtime.go`: provider lifecycle and engine queue message handler.
+- `bot/queue_runtime.go`: provider lifecycle, queue body parsing, dedupe cache,
+  and engine queue message handler.
 - `bot/bot_process.go`: startup and shutdown placement.
 - `bot/run_pipelines.go`, `bot/constants.go`, `bot/pipelinetype_string.go`:
   queued-job pipeline source.
@@ -487,6 +515,8 @@ What changes:
 - Root config can enable queue providers.
 - Jobs can declare `UUIDTrigger`.
 - Queue providers poll external systems and submit queue messages to the engine.
+- Queue bodies carry a UUID/timestamp prefix, and the engine deduplicates
+  matching triggers with the same prefix for 140 seconds.
 - The engine starts matching jobs from queue messages with a `queuedJob`
   pipeline type.
 
@@ -532,8 +562,8 @@ What does not change:
 - Race risks: reload while queue item is being matched; provider shutdown while
   a message callback is active; duplicate queue delivery from provider restart.
 - Mitigations: immutable config snapshots, provider stop channels, retry during
-  shutdown, idempotent job design guidance, and unit tests for reload/shutdown
-  behavior.
+  shutdown, engine-side UUID/timestamp dedupe, and unit tests for
+  reload/shutdown behavior.
 
 ### 8) Backward Compatibility
 
@@ -548,10 +578,12 @@ What does not change:
 Focused tests:
 
 - Config validation accepts `conf/queues/gcloud.yaml` with `QueueConfig`.
-- Root `QueueConfig` is rejected with a migration-style error.
+- Root `QueueConfig` is rejected with a configuration-placement error.
 - `QueueProviders` parses and normalizes provider names.
 - `UUIDTrigger` accepts valid UUIDs and rejects invalid or duplicate values.
 - Queue body parsing preserves arguments with spaces.
+- Queue body parsing requires a 12-15 digit timestamp after the UUID.
+- Duplicate UUID/timestamp pairs are discarded for 140 seconds.
 - Unknown UUID logs an error and returns `QueueAck`.
 - Shutdown returns `QueueRetry`.
 - Queue-triggered jobs start with `automaticTask=true`, expected args, and
@@ -581,8 +613,7 @@ Manual verification:
 - `aidocs/SCHEDULER_FLOW.md`: no behavior change, but cross-reference queued
   jobs if helpful.
 - `aidocs/COMPONENT_MAP.md`: add `queues/`, `conf/queues/`, and this document.
-- `aidocs/V3_COMPATIBILITY_CONTRACT.md`: no required change unless config
-  migration guidance changes.
+- `aidocs/V3_COMPATIBILITY_CONTRACT.md`: no required change.
 - `conf/README.md`: add `queues/<provider>.yaml`.
 - `resources/gcloud/README.md`: document queue resource scripts and curl flow.
 

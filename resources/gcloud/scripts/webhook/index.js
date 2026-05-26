@@ -4,6 +4,8 @@ const pubsub = new PubSub();
 const MAX_BODY_SIZE = 4096;
 const UUID_PREFIX_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const UUID_PREFIX_LEN = 36;
+const TIMESTAMP_RE = /^[0-9]{12,15}$/;
+const MIN_PREFIX_LEN = UUID_PREFIX_LEN + 1 + 12;
 
 exports.webhookIngest = async (req, res) => {
   try {
@@ -23,7 +25,7 @@ exports.webhookIngest = async (req, res) => {
       return res.status(413).send('Payload too large');
     }
 
-    if (req.rawBody.length < UUID_PREFIX_LEN) {
+    if (req.rawBody.length < MIN_PREFIX_LEN) {
       return res.status(400).send('Invalid payload format');
     }
 
@@ -32,7 +34,21 @@ exports.webhookIngest = async (req, res) => {
       return res.status(400).send('Invalid payload format');
     }
 
-    if (req.rawBody.length > UUID_PREFIX_LEN && req.rawBody[UUID_PREFIX_LEN] !== 0x20) {
+    if (req.rawBody[UUID_PREFIX_LEN] !== 0x3a) {
+      return res.status(400).send('Invalid payload format');
+    }
+
+    let timestampEnd = UUID_PREFIX_LEN + 1;
+    while (timestampEnd < req.rawBody.length && req.rawBody[timestampEnd] >= 0x30 && req.rawBody[timestampEnd] <= 0x39) {
+      timestampEnd += 1;
+    }
+
+    const timestamp = req.rawBody.subarray(UUID_PREFIX_LEN + 1, timestampEnd).toString('ascii');
+    if (!TIMESTAMP_RE.test(timestamp)) {
+      return res.status(400).send('Invalid payload format');
+    }
+
+    if (timestampEnd < req.rawBody.length && req.rawBody[timestampEnd] !== 0x20) {
       return res.status(400).send('Invalid payload format');
     }
 

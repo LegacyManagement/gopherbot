@@ -59,8 +59,8 @@ Practical note:
   used by the Gopherbot gcloud queue provider
 - `scripts/create-job-webhook-resources.sh` deploys the HTTP-to-Pub/Sub Cloud
   Function used by simple external callers
-- `scripts/queue-job.sh` posts a UUID plus shell-escaped job arguments to the
-  webhook URL
+- `scripts/queue-job.sh` posts a UUID/timestamp prefix plus shell-escaped job
+  arguments to the webhook URL
 
 ## Step 1: Open Cloud Shell Editor
 
@@ -442,8 +442,10 @@ QueueConfig:
 The deployed webhook and `gcloud` queue provider both enforce a strict payload
 contract for safety:
 
-- payload must begin with a canonical UUID (8-4-4-4-12 hex form)
-- payload may be UUID-only for zero-argument jobs, or `<uuid><space><args>`
+- payload must begin with a canonical UUID (8-4-4-4-12 hex form), followed by
+  a colon and a 12-15 digit numeric timestamp
+- payload may be prefix-only for zero-argument jobs, or
+  `<uuid>:<timestamp><space><args>`
 - payload body must be no larger than `4096` bytes by default
 
 In the webhook Cloud Function code, this limit is defined as a constant in
@@ -463,6 +465,11 @@ WEBHOOK_URL="https://${REGION}-${PROJECT_ID}.cloudfunctions.net/job-queue-${QUEU
 JOB_UUID="${MYFIRSTJOB_UUID}" \
 ./scripts/queue-job.sh "arg with spaces" second-arg
 ```
+
+`queue-job.sh` calculates the timestamp with
+`echo "$(( $(date +%s%N) / 100000 ))"` and sends it as part of the queue
+dedupe prefix. The robot records each matching UUID/timestamp pair for 140
+seconds and discards repeated deliveries with the same prefix.
 
 The queue body is acknowledged once the robot accepts the trigger. Job success
 or failure is handled by the normal Gopherbot pipeline/logging path.

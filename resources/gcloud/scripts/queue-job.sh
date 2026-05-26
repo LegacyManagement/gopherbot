@@ -18,7 +18,12 @@ fi
 QUOTED_ARGS=$(printf "%q " "$@")
 
 # Remove the trailing space from QUOTED_ARGS
-PAYLOAD="${JOB_UUID} ${QUOTED_ARGS% }"
+TIMESTAMP="$(echo "$(( $(date +%s%N) / 100000 ))")"
+if [[ -n "${QUOTED_ARGS% }" ]]; then
+  PAYLOAD="${JOB_UUID}:${TIMESTAMP} ${QUOTED_ARGS% }"
+else
+  PAYLOAD="${JOB_UUID}:${TIMESTAMP}"
+fi
 
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${WEBHOOK_URL}" \
   -H "Content-Type: text/plain" \

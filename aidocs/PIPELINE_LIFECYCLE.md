@@ -134,8 +134,9 @@ Catch-all mode scoping:
 - Plugin match → `startPipeline(..., plugCommand|plugMessage, ...)`: `bot/dispatch.go:checkPluginMatchersAndRun`, `bot/constants.go` `pipelineType`.
 - Job trigger / command → `startPipeline(..., jobTrigger|jobCommand, ...)`: `bot/jobrun.go:checkJobMatchersAndRun`, `bot/constants.go` `pipelineType`.
 - Queue trigger → `triggerJobFromQueue(...)` parses the queue body, matches a
-  job `UUIDTrigger`, and starts `startPipeline(..., queuedJob, ...)` without
-  entering connector message routing: `bot/queue_runtime.go`.
+  job `UUIDTrigger`, deduplicates matching UUID/timestamp prefixes, and starts
+  `startPipeline(..., queuedJob, ...)` without entering connector message
+  routing: `bot/queue_runtime.go`.
 - `startPipeline` now stamps each pipeline with `startedAt`, effective timeout settings, and operator-channel routing metadata before the primary task runs: `bot/run_pipelines.go`, `bot/pipecontext.go`.
 - A bounded live log buffer is attached to every pipeline through `newPipelineLiveLogger(...)`: `bot/history.go`, `bot/pipeline_monitoring.go`.
   - The live buffer tees normal history logging and keeps recent section markers, `Robot.Log(...)` / `worker.Log(...)`, and child stdout/stderr even when a job/plugin later discards persisted history (`KeepLogs: 0`).
