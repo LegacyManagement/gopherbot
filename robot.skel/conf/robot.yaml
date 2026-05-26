@@ -43,6 +43,12 @@ HistoryProvider: {{ $history }}
 
 ## Outgoing format when a plugin or job does not choose one explicitly.
 DefaultMessageFormat: BasicMarkdown
+
+## Optional channel message sent after startup readiness. ReadyChannel defaults
+## to DefaultJobChannel when unset.
+# ReadyMessage: "<botname> is ready"
+# ReadyChannel: general
+
 TimeOuts:
   Plugin:
     Warn: 7m

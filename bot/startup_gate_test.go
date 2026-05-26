@@ -8,8 +8,12 @@ import (
 )
 
 type startupGateCaptureConnector struct {
-	user string
-	msg  string
+	user     string
+	channel  string
+	thread   string
+	msg      string
+	format   robot.MessageFormat
+	protocol string
 }
 
 func (c *startupGateCaptureConnector) GetProtocolUserAttribute(user, attr string) (string, robot.RetVal) {
@@ -19,7 +23,13 @@ func (c *startupGateCaptureConnector) MessageHeard(user, channel string)  {}
 func (c *startupGateCaptureConnector) DefaultHelp() []string              { return nil }
 func (c *startupGateCaptureConnector) JoinChannel(ch string) robot.RetVal { return robot.Ok }
 func (c *startupGateCaptureConnector) SendProtocolChannelThreadMessage(channel, thread, msg string, format robot.MessageFormat, msgObject *robot.ConnectorMessage) robot.RetVal {
+	c.channel = channel
+	c.thread = thread
 	c.msg = msg
+	c.format = format
+	if msgObject != nil {
+		c.protocol = msgObject.Protocol
+	}
 	return robot.Ok
 }
 func (c *startupGateCaptureConnector) SendProtocolUserChannelThreadMessage(user, username, channel, thread, msg string, format robot.MessageFormat, msgObject *robot.ConnectorMessage) robot.RetVal {
@@ -27,6 +37,103 @@ func (c *startupGateCaptureConnector) SendProtocolUserChannelThreadMessage(user,
 	c.msg = msg
 	return robot.Ok
 }
+
+func TestReadyMessageSkippedWhenUnset(t *testing.T) {
+	conn := &startupGateCaptureConnector{}
+	oldConnector := interfaces.Connector
+	interfaces.Connector = conn
+	defer func() { interfaces.Connector = oldConnector }()
+
+	currentCfg.Lock()
+	oldCfg := currentCfg.configuration
+	currentCfg.configuration = &configuration{
+		defaultJobChannel:    "jobs",
+		defaultProtocol:      "test",
+		defaultMessageFormat: robot.BasicMarkdown,
+	}
+	currentCfg.Unlock()
+	defer func() {
+		currentCfg.Lock()
+		currentCfg.configuration = oldCfg
+		currentCfg.Unlock()
+	}()
+
+	sendReadyMessageIfConfigured()
+
+	if conn.msg != "" {
+		t.Fatalf("ready message sent = %q, want none", conn.msg)
+	}
+}
+
+func TestReadyMessageDefaultsToJobChannel(t *testing.T) {
+	conn := &startupGateCaptureConnector{}
+	oldConnector := interfaces.Connector
+	interfaces.Connector = conn
+	defer func() { interfaces.Connector = oldConnector }()
+
+	currentCfg.Lock()
+	oldCfg := currentCfg.configuration
+	currentCfg.configuration = &configuration{
+		defaultJobChannel:    "jobs",
+		readyMessage:         "Robot ready",
+		defaultProtocol:      "test",
+		defaultMessageFormat: robot.BasicMarkdown,
+	}
+	currentCfg.Unlock()
+	defer func() {
+		currentCfg.Lock()
+		currentCfg.configuration = oldCfg
+		currentCfg.Unlock()
+	}()
+
+	sendReadyMessageIfConfigured()
+
+	if conn.msg != "Robot ready" {
+		t.Fatalf("ready message = %q, want %q", conn.msg, "Robot ready")
+	}
+	if conn.channel != "jobs" {
+		t.Fatalf("ready channel = %q, want jobs", conn.channel)
+	}
+	if conn.protocol != "test" {
+		t.Fatalf("ready protocol = %q, want test", conn.protocol)
+	}
+	if conn.format != robot.BasicMarkdown {
+		t.Fatalf("ready format = %v, want BasicMarkdown", conn.format)
+	}
+}
+
+func TestReadyMessageUsesConfiguredChannel(t *testing.T) {
+	conn := &startupGateCaptureConnector{}
+	oldConnector := interfaces.Connector
+	interfaces.Connector = conn
+	defer func() { interfaces.Connector = oldConnector }()
+
+	currentCfg.Lock()
+	oldCfg := currentCfg.configuration
+	currentCfg.configuration = &configuration{
+		defaultJobChannel:    "jobs",
+		readyMessage:         "Robot ready",
+		readyChannel:         "ops",
+		defaultProtocol:      "test",
+		defaultMessageFormat: robot.Raw,
+	}
+	currentCfg.Unlock()
+	defer func() {
+		currentCfg.Lock()
+		currentCfg.configuration = oldCfg
+		currentCfg.Unlock()
+	}()
+
+	sendReadyMessageIfConfigured()
+
+	if conn.channel != "ops" {
+		t.Fatalf("ready channel = %q, want ops", conn.channel)
+	}
+	if conn.format != robot.Raw {
+		t.Fatalf("ready format = %v, want Raw", conn.format)
+	}
+}
+
 func (c *startupGateCaptureConnector) SendProtocolUserMessage(user, msg string, format robot.MessageFormat, msgObject *robot.ConnectorMessage) robot.RetVal {
 	c.user = user
 	c.msg = msg

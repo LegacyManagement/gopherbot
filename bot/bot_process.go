@@ -97,6 +97,8 @@ type configuration struct {
 	historyProvider      string              // Name of the history provider to use
 	queueProviders       []string            // Queue providers to start after full robot initialization
 	workSpace            string              // Read/Write directory where the robot does work
+	readyMessage         string              // optional channel message sent after startup readiness
+	readyChannel         string              // channel for readyMessage; defaults to defaultJobChannel
 	defaultElevator      string              // Plugin name for performing elevation
 	defaultAuthorizer    string              // Plugin name for performing authorization
 	identityProviders    map[string]IdentityProviderConfig
@@ -459,6 +461,7 @@ func run() {
 	initializeRuntimeGitState()
 	startQueueProviderRuntimes()
 	releaseStartupGate()
+	sendReadyMessageIfConfigured()
 	Log(robot.Info, "Robot is initialized and running")
 	signalRobotInitialized()
 	if hint := startupSSHHint(startMode, currentCfg.protocol, currentCfg.adminUsers); hint != "" {

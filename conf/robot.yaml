@@ -108,6 +108,10 @@ LogLevel: {{ $loglevel }}
 AdminUsers: [ "alice" ]
 DefaultChannels: [ "general", "random" ]
 DefaultJobChannel: {{ env "GOPHER_JOBCHANNEL" | default "general" }}
+## Optional channel message sent after the startup readiness gate opens.
+## ReadyChannel defaults to DefaultJobChannel when unset.
+# ReadyMessage: "Robot is ready"
+# ReadyChannel: general
 TimeOuts:
   Plugin:
     Warn: 7m

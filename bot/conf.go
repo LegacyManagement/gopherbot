@@ -115,6 +115,8 @@ type ConfigLoader struct {
 	QueueProviders       []string                          `yaml:"QueueProviders"`       // Optional queue providers to initialize after startup
 	HttpDebug            bool                              `yaml:"HttpDebug"`            // Whether to turn on debug logging of local http API calls
 	WorkSpace            string                            `yaml:"WorkSpace"`            // Read/Write area the robot uses to do work
+	ReadyMessage         string                            `yaml:"ReadyMessage"`         // Optional channel message sent after startup readiness
+	ReadyChannel         string                            `yaml:"ReadyChannel"`         // Channel for ReadyMessage; defaults to DefaultJobChannel
 	DefaultElevator      string                            `yaml:"DefaultElevator"`      // Elevator plugin for ElevatedCommands and ElevateImmediateCommands
 	DefaultAuthorizer    string                            `yaml:"DefaultAuthorizer"`    // Authorizer plugin for AuthorizedCommands, or when AuthorizeAllCommands = true
 	DefaultMessageFormat string                            `yaml:"DefaultMessageFormat"` // How the robot formats outgoing messages; default: BasicMarkdown
@@ -453,7 +455,7 @@ func loadConfig(preConnect bool) error {
 		var val interface{}
 		skip := false
 		switch key {
-		case "AdminContact", "Email", "PrimaryProtocol", "DefaultProtocol", "Brain", "EncryptionKey", "HistoryProvider", "WorkSpace", "DefaultJobChannel", "DefaultElevator", "DefaultAuthorizer", "DefaultMessageFormat", "Name", "Alias", "LogDest", "LogLevel", "TimeZone":
+		case "AdminContact", "Email", "PrimaryProtocol", "DefaultProtocol", "Brain", "EncryptionKey", "HistoryProvider", "WorkSpace", "ReadyMessage", "ReadyChannel", "DefaultJobChannel", "DefaultElevator", "DefaultAuthorizer", "DefaultMessageFormat", "Name", "Alias", "LogDest", "LogLevel", "TimeZone":
 			val = &strval
 		case "HttpDebug", "IgnoreUnlistedUsers", "SecureParameters":
 			val = &boolval
@@ -521,6 +523,10 @@ func loadConfig(preConnect bool) error {
 			newconfig.QueueProviders = *(val.(*[]string))
 		case "WorkSpace":
 			newconfig.WorkSpace = *(val.(*string))
+		case "ReadyMessage":
+			newconfig.ReadyMessage = *(val.(*string))
+		case "ReadyChannel":
+			newconfig.ReadyChannel = *(val.(*string))
 		case "DefaultJobChannel":
 			newconfig.DefaultJobChannel = *(val.(*string))
 		case "DefaultElevator":
@@ -732,6 +738,11 @@ func loadConfig(preConnect bool) error {
 
 	if newconfig.DefaultJobChannel != "" {
 		processed.defaultJobChannel = newconfig.DefaultJobChannel
+	}
+	processed.readyMessage = newconfig.ReadyMessage
+	processed.readyChannel = newconfig.ReadyChannel
+	if strings.TrimSpace(processed.readyChannel) == "" {
+		processed.readyChannel = processed.defaultJobChannel
 	}
 
 	if newconfig.DefaultElevator != "" {

@@ -21,7 +21,7 @@ Startup proceeds through the following phases **in order**:
 13. **Initial plugin quiescence** – Wait for the first plugin initialization batch to complete
 14. **Runtime git branch capture** – Best-effort detection of current/default startup branch for admin observability
 15. **Queue provider runtime startup** – Start configured queue providers after first plugin initialization
-16. **Readiness signal** – Release the startup gate and signal that the robot is initialized
+16. **Readiness signal** – Release the startup gate, send the optional ready notification, and signal that the robot is initialized
 
 Internal exception:
 - `pipeline-child-exec` is an internal command used by multiprocess task execution; it exits after one child-task run and bypasses normal robot startup phases.
@@ -253,6 +253,20 @@ If `DefaultProtocol` is set, it must be the primary protocol or one of `Secondar
 - Unknown values log an error and fall back to `BasicMarkdown`
 - This default applies only when a plugin/job/built-in send path does not explicitly select a message format.
 - Calls chained from `Robot.MessageFormat(...)` override the default for that send.
+
+### Ready Notification
+
+`ReadyMessage` in `robot.yaml` is optional and defaults to an empty string.
+
+- When unset or blank, startup sends no ready notification.
+- When set, startup sends the message after queue-provider startup has been
+  attempted and after the startup command gate opens.
+- `ReadyChannel` selects the channel for this notification. If unset or blank,
+  it defaults to `DefaultJobChannel`.
+- The ready notification is sent through the default outbound protocol using
+  `DefaultMessageFormat`.
+- The installed default robot does not configure `ReadyMessage`, so it remains
+  quiet at readiness unless a custom robot opts in.
 
 ### Primary Protocol Config Source
 
@@ -657,7 +671,11 @@ run()
               │
               └─> startQueueProviderRuntimes()
                     │
-                    └─> Log("Robot is initialized and running")
+                    └─> releaseStartupGate()
+                          │
+                          └─> sendReadyMessageIfConfigured()
+                                │
+                                └─> Log("Robot is initialized and running")
 ```
 
 On normal engine reload (`reload`, git-update reload follow-up, or branch-switch reload follow-up), `loadConfig(false)` parses and validates the new configuration, updates the active runtime configuration, reconciles secondary connector membership and queue provider membership, then calls `Reload()` on all currently running connectors before refreshing regexes, schedules, and plugin init state.
