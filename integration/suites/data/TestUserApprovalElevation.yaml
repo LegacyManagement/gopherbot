@@ -21,7 +21,7 @@ flow:
     receive:
       user: alice
       channel: general
-      text_pattern: "This command requires approval for 'gosec'\\. Select one approver: a\\) bob, b\\) carol"
+      text_pattern: "Approval required for command gosec/secelevated\\. Select one approver: a\\) bob, b\\) carol"
   - name: select-carol
     send:
       user: alice
@@ -30,7 +30,7 @@ flow:
   - name: carol-approval-prompt
     receive:
       user: carol
-      text_pattern: "alice requests approval to run elevated action for 'gosec'\\. Reply yes to approve or no to deny\\."
+      text_pattern: "alice is requesting approval to run command gosec/secelevated - approve\\? \\(y/n\\)"
   - name: carol-approves
     send:
       user: carol
@@ -43,3 +43,34 @@ flow:
     receive:
       channel: general
       text_pattern: "SECURITY CHECK: secelevated"
+  - name: request-denied-elevation
+    send:
+      user: alice
+      channel: general
+      text: ;go-sec-elevated
+  - name: requester-chooses-denying-approver
+    receive:
+      user: alice
+      channel: general
+      text_pattern: "Approval required for command gosec/secelevated\\. Select one approver: a\\) bob, b\\) carol"
+  - name: select-bob
+    send:
+      user: alice
+      channel: general
+      text: a
+  - name: bob-approval-prompt
+    receive:
+      user: bob
+      text_pattern: "alice is requesting approval to run command gosec/secelevated - approve\\? \\(y/n\\)"
+  - name: bob-denies
+    send:
+      user: bob
+      text: "no"
+  - name: approval-denied
+    receive:
+      channel: general
+      text_pattern: "Approval denied by bob"
+  - name: protected-command-blocked
+    receive:
+      channel: general
+      text_pattern: "Sorry, this command requires elevation"

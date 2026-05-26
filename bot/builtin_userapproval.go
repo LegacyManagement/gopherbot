@@ -22,6 +22,7 @@ type userApprovalRuntime interface {
 	Say(msg string, v ...interface{}) robot.RetVal
 	Log(l robot.LogLevel, m string, v ...interface{}) bool
 	pipelineNameForApproval() string
+	commandNameForApproval() string
 }
 
 func init() {
@@ -30,6 +31,10 @@ func init() {
 
 func (r Robot) pipelineNameForApproval() string {
 	return r.pipeName
+}
+
+func (r Robot) commandNameForApproval() string {
+	return r.plugCommand
 }
 
 func userApprovalElevate(gr robot.Robot, command string, args ...string) robot.TaskRetVal {
@@ -52,6 +57,7 @@ func runUserApproval(r userApprovalRuntime) robot.TaskRetVal {
 
 	requester := canonicalApprovalUser(r.GetMessage().User)
 	pipeName := strings.TrimSpace(r.pipelineNameForApproval())
+	actionName := userApprovalActionName(pipeName, r.commandNameForApproval())
 	approvers := effectiveApprovalApprovers(cfg, pipeName, requester)
 	if len(approvers) == 0 {
 		r.Log(robot.Error, "builtin-userapproval has no eligible approvers for pipeline '%s', requester '%s'", pipeName, requester)
@@ -64,7 +70,7 @@ func runUserApproval(r userApprovalRuntime) robot.TaskRetVal {
 		return robot.Fail
 	}
 
-	choicePrompt := userApprovalChoicePrompt(pipeName, approvers)
+	choicePrompt := userApprovalChoicePrompt(actionName, approvers)
 	choice, ret := r.PromptForReply(userApprovalChoiceMatcher, choicePrompt)
 	if ret != robot.Ok {
 		r.Log(robot.Warn, "builtin-userapproval requester '%s' did not select an approver for pipeline '%s': %s", requester, pipeName, ret)
@@ -78,8 +84,8 @@ func runUserApproval(r userApprovalRuntime) robot.TaskRetVal {
 	}
 
 	answer, ret := r.PromptUserForReply("YesNo", approver,
-		"%s requests approval to run elevated action for '%s'. Reply yes to approve or no to deny.",
-		requester, pipeName)
+		"%s is requesting approval to run command %s - approve? (y/n)",
+		requester, actionName)
 	if ret != robot.Ok {
 		r.Log(robot.Warn, "builtin-userapproval approver '%s' did not respond for requester '%s', pipeline '%s': %s", approver, requester, pipeName, ret)
 		r.Say("Approval request to %s did not complete", approver)
@@ -123,12 +129,24 @@ func canonicalApprovalUser(user string) string {
 	return strings.ToLower(strings.TrimSpace(user))
 }
 
-func userApprovalChoicePrompt(pipeName string, approvers []string) string {
+func userApprovalActionName(pipeName, command string) string {
+	pipeName = strings.TrimSpace(pipeName)
+	command = strings.TrimSpace(command)
+	if pipeName == "" {
+		return command
+	}
+	if command == "" {
+		return pipeName
+	}
+	return pipeName + "/" + command
+}
+
+func userApprovalChoicePrompt(actionName string, approvers []string) string {
 	choices := make([]string, 0, len(approvers))
 	for i, approver := range approvers {
 		choices = append(choices, fmt.Sprintf("%c) %s", 'a'+i, approver))
 	}
-	return fmt.Sprintf("This command requires approval for '%s'. Select one approver: %s", pipeName, strings.Join(choices, ", "))
+	return fmt.Sprintf("Approval required for command %s. Select one approver: %s", actionName, strings.Join(choices, ", "))
 }
 
 func userApprovalApproverForChoice(choice string, approvers []string) (string, bool) {

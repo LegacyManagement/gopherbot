@@ -48,9 +48,30 @@ func TestUserApprovalChoiceMapping(t *testing.T) {
 }
 
 func TestUserApprovalChoicePrompt(t *testing.T) {
-	got := userApprovalChoicePrompt("wireguard", []string{"david", "bob", "alice"})
-	want := "This command requires approval for 'wireguard'. Select one approver: a) david, b) bob, c) alice"
+	got := userApprovalChoicePrompt("wireguard/add-device", []string{"david", "bob", "alice"})
+	want := "Approval required for command wireguard/add-device. Select one approver: a) david, b) bob, c) alice"
 	if got != want {
 		t.Fatalf("userApprovalChoicePrompt() = %q, want %q", got, want)
+	}
+}
+
+func TestUserApprovalActionName(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		pipeName string
+		command  string
+		want     string
+	}{
+		{"plugin command", "vpn", "add-device", "vpn/add-device"},
+		{"pipeline fallback", "maintenance", "", "maintenance"},
+		{"command fallback", "", "approve", "approve"},
+		{"trimmed", " vpn ", " add-device ", "vpn/add-device"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := userApprovalActionName(tc.pipeName, tc.command)
+			if got != tc.want {
+				t.Fatalf("userApprovalActionName(%q, %q) = %q, want %q", tc.pipeName, tc.command, got, tc.want)
+			}
+		})
 	}
 }

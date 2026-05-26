@@ -86,6 +86,7 @@ func (w *worker) makeRobot() Robot {
 			pipeName:       w.pipeName,
 			pipeDesc:       w.pipeDesc,
 			taskName:       w.taskName,
+			plugCommand:    w.plugCommand,
 			currentTask:    w.currentTask,
 			exclusive:      w.exclusive,
 			exclusiveTag:   w.exclusiveTag,

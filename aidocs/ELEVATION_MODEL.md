@@ -229,9 +229,10 @@ Behavior:
 - `PluginApprovers.<pipeName>` supersedes `FallbackApprovers` when present.
 - The requester is excluded from the eligible approver list, so users cannot
   approve their own elevation.
-- The requester receives a lowercase-letter menu such as
-  `a) david, b) bob, c) alice` and must reply with a single lowercase letter
-  matched by the elevator's `approvalChoice` reply matcher.
+- The requester receives a lowercase-letter menu identifying the action as
+  `plugin/command` when a plugin command is known, such as `vpn/add-device`,
+  and must reply with a single lowercase letter matched by the elevator's
+  `approvalChoice` reply matcher.
 - The selected approver receives a DM yes/no prompt. `yes`/`y` approves and
   returns `robot.Success`; `no`/`n`, timeout, invalid requester choice, or
   missing eligible approvers fail elevation.
