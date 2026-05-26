@@ -44,6 +44,10 @@ HistoryProvider: {{ $history }}
 ## Outgoing format when a plugin or job does not choose one explicitly.
 DefaultMessageFormat: BasicMarkdown
 
+## Connector-originated messages from the robot itself are processed by
+## default. Uncomment to make the engine ignore messages marked SelfMessage.
+# HearSelf: false
+
 ## Optional channel message sent after startup readiness. ReadyChannel defaults
 ## to DefaultJobChannel when unset.
 # ReadyMessage: "<botname> is ready"

@@ -254,6 +254,17 @@ If `DefaultProtocol` is set, it must be the primary protocol or one of `Secondar
 - This default applies only when a plugin/job/built-in send path does not explicitly select a message format.
 - Calls chained from `Robot.MessageFormat(...)` override the default for that send.
 
+### Self-Message Processing
+
+`HearSelf` in `robot.yaml` is optional and defaults to `true`.
+
+- Connectors always forward messages they recognize as robot-originated with
+  `ConnectorMessage.SelfMessage=true`.
+- When `HearSelf=false`, the engine drops those messages in
+  `handler.IncomingMessage(...)` before worker creation.
+- When `HearSelf=true`, self messages continue into the routing pipeline, where
+  normal plugin matching is skipped but job triggers may still run.
+
 ### Ready Notification
 
 `ReadyMessage` in `robot.yaml` is optional and defaults to an empty string.

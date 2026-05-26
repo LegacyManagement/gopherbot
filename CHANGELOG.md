@@ -506,7 +506,7 @@ To try out working with a separate environment:
 * Batch of improvements to the `cbot.sh` script for local dockerized development
 
 # v2.6.1 - Robots can now talk to themselves
-* When Gopherbot was first created, it didn't make much sense for Gopherbot robots to process messages that originated from themselves. Now that messages carry a "ThreadID" ("GOPHER_THREAD_ID"), a clever roboticist can take advantage of the robot's ability to hear itself to e.g. associate state with a thread. To enable this, set `HearSelf: true` in your Slack ProcotolConfig.
+* When Gopherbot was first created, it didn't make much sense for Gopherbot robots to process messages that originated from themselves. Now that messages carry a "ThreadID" ("GOPHER_THREAD_ID"), a clever roboticist can take advantage of the robot's ability to hear itself to e.g. associate state with a thread. In current v3 config this is controlled by top-level `HearSelf` in `robot.yaml`.
 
 # v2.6.0 - New IDE and Threaded Conversations Support
 * The documentation is just starting to catch up with the new **Gopherbot IDE** - a giant (>2G) container with everything you need to do development either on your robot, or Gopherbot itself.

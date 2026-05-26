@@ -74,7 +74,14 @@ Catch-all mode scoping:
 
 ## Self-Message Routing Nuance (HearSelf-style flows)
 
-- `ConnectorMessage.SelfMessage=true` is treated specially.
+- Connectors always forward recognized robot-originated inbound events with
+  `ConnectorMessage.SelfMessage=true`; the engine owns the root `HearSelf`
+  decision.
+- `HearSelf` is a top-level `robot.yaml` setting and defaults to `true`.
+- When `HearSelf=false`, `bot/handler.go:IncomingMessage` drops messages marked
+  `SelfMessage=true` before creating a worker.
+- When `HearSelf=true`, `ConnectorMessage.SelfMessage=true` is treated
+  specially during routing.
 - Normal plugin paths (`Commands`, `MessageMatchers`, catch-alls, thread subscriptions) are gated behind `!w.Incoming.SelfMessage` checks in `bot/dispatch.go:handleMessage`; subscription expiry callbacks are engine-generated lifecycle calls and are not connector self-messages.
 - Job triggers are checked first in `bot/jobrun.go:checkJobMatchersAndRun`, before the self-message early return:
   - This enables a pattern where a robot emits a formatted message and then reacts to that same message via a trigger job (for example, to capture a started thread ID from `GOPHER_START_THREAD_ID`).

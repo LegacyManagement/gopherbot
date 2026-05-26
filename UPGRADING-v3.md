@@ -494,6 +494,32 @@ Why this exists:
 - Google Chat can return the bot's own messages and mention annotations with a numeric bot `users/{id}` instead of the alias `users/app`.
 - Separating `SelfID` from `UserMap` lets the connector recognize self messages and bot mentions without forcing the robot to masquerade as a human roster mapping.
 
+## 2026-05-26 HearSelf Is Now Engine-Owned
+
+`HearSelf` is now a top-level `robot.yaml` setting and defaults to `true`.
+
+Connector behavior is standardized:
+
+- Connectors always forward messages they recognize as coming from the robot
+  itself.
+- Those messages are marked `ConnectorMessage.SelfMessage=true`.
+- The engine decides whether to process or ignore them.
+
+Migration guidance:
+
+- Remove `ProtocolConfig.HearSelf` from connector config files such as
+  `conf/protocols/ssh.yaml`, `conf/protocols/slack.yaml`, or terminal protocol
+  overrides.
+- To disable self-message processing for the whole robot, set:
+
+```yaml
+HearSelf: false
+```
+
+Existing self-trigger patterns continue to work by default. In particular,
+`SelfMessage=true` messages can still trigger jobs, while normal plugin command
+and ambient message matching remains skipped for self messages.
+
 ## 2026-04-23 Robot Administration Improvements
 
 This release adds pipeline timeout monitoring, richer operator-facing crash visibility, and a broader hidden-command admin surface.

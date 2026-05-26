@@ -31,6 +31,9 @@ This file captures Slack connector behavior relevant to routing, private slash c
 - `ValidatedUser=true` only when the inbound Slack user ID matches configured canonical mapping.
 - Slack mention tokens are normalized into plain `@username` text before the engine sees them.
 - Ordinary messages that contain a bot mention still remain `BotMessage=false`; the engine's bot-name regexes decide whether that normalized text is addressed to the robot.
+- Messages Slack identifies as sent by the bot user are still forwarded and are
+  marked `SelfMessage=true`; the engine's top-level `HearSelf` setting decides
+  whether to process or ignore them.
 - Slash command events routed to this app are passed as:
   - `BotMessage=true`
   - `HiddenMessage=true`

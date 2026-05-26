@@ -15,7 +15,6 @@ Alias: {{ $botalias }}
 ProtocolConfig:
   ListenHost: {{ env "GOPHER_SSH_HOST" | default "localhost" }}
   ListenPort: {{ env "GOPHER_SSH_PORT" | default "4221" }}
-  HearSelf: true
   DefaultChannel: general
   Color: true
   ColorScheme:

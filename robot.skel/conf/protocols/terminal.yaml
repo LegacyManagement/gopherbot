@@ -7,7 +7,6 @@
 ProtocolConfig:
   EOF: '<botalias>quit'
   Abort: '<botalias>abort'
-  HearSelf: false # set true for the robot to hear it's own messages
 AppendUserRoster:
 - UserName: '<botname>'
   BotUser: true

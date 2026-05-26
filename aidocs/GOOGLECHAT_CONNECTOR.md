@@ -52,6 +52,9 @@ This file captures Google Chat connector behavior relevant to routing, private s
 
 - Google Chat connector identity mapping is connector-local in `ProtocolConfig.UserMap` (`username -> users/{id}`).
 - Google Chat bot self-identification is separate in `ProtocolConfig.SelfID`; robot owners should not overload the bot's own numeric `users/{id}` into `UserMap`.
+- `ProtocolConfig.SelfID` is recognition metadata only. The engine's top-level
+  `HearSelf` setting decides whether messages marked `SelfMessage=true` are
+  processed.
 - Engine policy checks remain username-based against global `UserRoster`.
 - Inbound interaction events carry the Google Chat user resource name (for example `users/12345678901234567890`) as `ConnectorMessage.UserID`.
 - If the resource name exists in `ProtocolConfig.UserMap`, the connector sets `ConnectorMessage.UserName` to the canonical Gopherbot username and sets `ConnectorMessage.ValidatedUser=true`.
@@ -67,7 +70,9 @@ This file captures Google Chat connector behavior relevant to routing, private s
 
 - Google Chat interaction events that produce bot input are normalized as `Protocol: "googlechat"`.
 - Google Workspace Events message-created CloudEvents are also normalized as `Protocol: "googlechat"`.
-- Self-message recognition accepts both the Google Chat alias `users/app` and the configured/learned numeric `ProtocolConfig.SelfID`.
+- Self-message recognition accepts both the Google Chat alias `users/app` and
+  the configured/learned numeric `ProtocolConfig.SelfID`; recognized self
+  messages are forwarded with `SelfMessage=true`.
 - Mention spans are rewritten into Slack-style plain-text mentions before the engine sees them.
   - bot mentions become `@<bot username>` using the robot's canonical bot username
   - mapped human mentions become `@<canonical username>`

@@ -9,8 +9,6 @@ ProtocolConfig:
   ## commands.
   AcceptSlashCommands: false
   # SlashCommand: clu
-  ## Some robots need to hear their own messages
-  HearSelf: false
   ## If IgnoreUnlistedUsers is true (and it should be), you'll
   ## need to add map entries here for all your robot's users. User
   ## IDs are easily discoverable in Slack.

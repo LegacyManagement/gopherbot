@@ -37,9 +37,6 @@ This document records the intended SSH connector behavior, control flow, and int
   - `.ssh-connect` always records the actual selected port.
 - `HostKey` (private key string, optional; custom robots normally load it from
   `conf/variables/*.yaml` with `{{ secret "SSH_HOST_KEY" }}`)
-- `HearSelf` (default recommended: `true` for SSH)  
-  - when true, connector-injected bot-authored events (such as join announcements)
-    are forwarded back through `IncomingMessage` as `SelfMessage=true`
 - `ReplayBufferSize` (default: `42`)
 - `MaxMsgBytes` (default: `16384`)
 - `DefaultChannel` (default: `general`)
@@ -95,13 +92,14 @@ name-addressed hidden input, hidden-help rendering, and local bot labeling. If
 - Live broadcast excludes the joining user's own active session(s); other users
   in matching views/filters see the announcement.
 - The connector also forwards a canonical SSH inbound message for the same
-  event through `handler.IncomingMessage(...)` when `HearSelf` is enabled.
-  The forwarded event is marked `SelfMessage=true`.
+  event through `handler.IncomingMessage(...)`.
+- The forwarded event is marked `SelfMessage=true`; the engine's top-level
+  `HearSelf` setting decides whether to process or ignore it.
 
 ### Self-hear note
 
-- SSH now supports `ProtocolConfig.HearSelf` for connector-originated
-  bot-authored events (for example join announcements).
+- SSH always forwards connector-originated bot-authored events (for example
+  join announcements) with `SelfMessage=true`.
 - Engine routing behavior for `SelfMessage=true` is important:
   - plugin command/message matching is skipped
   - job triggers still run (see `aidocs/PIPELINE_LIFECYCLE.md`)

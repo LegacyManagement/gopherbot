@@ -75,6 +75,20 @@ The engine may rely on:
 
 The engine must not infer or overwrite this after connector normalization.
 
+### 6. `SelfMessage` is connector-authoritative; processing is engine-owned
+
+Connectors must set `ConnectorMessage.SelfMessage=true` whenever they
+recognize an inbound event as originating from the robot itself.
+
+Connectors must still forward those recognized self messages through
+`Handler.IncomingMessage(...)`. The root `HearSelf` setting in `robot.yaml`
+decides whether the engine processes or ignores them.
+
+Connectors must not implement connector-local `HearSelf` gates. A connector
+may need transport-local configuration to recognize its own identity, such as
+Google Chat `ProtocolConfig.SelfID`, but that configuration is recognition
+metadata, not engine-routing policy.
+
 ## Identity Rules
 
 - Connectors may use transport-local internal user IDs for routing and live mentions.

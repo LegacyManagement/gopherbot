@@ -50,6 +50,10 @@ loop:
 			if exists {
 				userName = tc.users[i].Name
 			}
+			selfMessage := msg.User == tc.botID
+			if selfMessage {
+				userName = tc.botName
+			}
 			direct := false
 			if len(msg.Channel) > 0 {
 				channelID = "#" + msg.Channel
@@ -68,6 +72,7 @@ loop:
 				DirectMessage:   direct,
 				MessageText:     msg.Message,
 				HiddenMessage:   msg.Hidden,
+				SelfMessage:     selfMessage,
 				MessageObject:   msg,
 				Client:          tc,
 			}

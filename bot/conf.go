@@ -121,6 +121,7 @@ type ConfigLoader struct {
 	DefaultAuthorizer    string                            `yaml:"DefaultAuthorizer"`    // Authorizer plugin for AuthorizedCommands, or when AuthorizeAllCommands = true
 	DefaultMessageFormat string                            `yaml:"DefaultMessageFormat"` // How the robot formats outgoing messages; default: BasicMarkdown
 	IgnoreUnlistedUsers  bool                              `yaml:"IgnoreUnlistedUsers"`  // Drop messages unless user is in global UserRoster
+	HearSelf             *bool                             `yaml:"HearSelf"`             // Process connector-marked messages from the robot itself; default: true
 	SecureParameters     bool                              `yaml:"SecureParameters"`     // Don't publish parameters as environment variables
 	DefaultChannels      []string                          `yaml:"DefaultChannels"`      // Channels where plugins are active by default, e.g., ["general", "random"]
 	IgnoreUsers          []string                          `yaml:"IgnoreUsers"`          // Users the bot never talks to - like other bots
@@ -450,6 +451,7 @@ func loadConfig(preConnect bool) error {
 		var stval []ScheduledTask
 		var mailval botMailer
 		var boolval bool
+		var boolptrval *bool
 		var intval int
 		var timeoutVal TimeOutsConfig
 		var val interface{}
@@ -459,6 +461,8 @@ func loadConfig(preConnect bool) error {
 			val = &strval
 		case "HttpDebug", "IgnoreUnlistedUsers", "SecureParameters":
 			val = &boolval
+		case "HearSelf":
+			val = &boolptrval
 		case "BotInfo":
 			val = &bival
 		case "UserRoster":
@@ -535,6 +539,8 @@ func loadConfig(preConnect bool) error {
 			newconfig.DefaultAuthorizer = *(val.(*string))
 		case "DefaultMessageFormat":
 			newconfig.DefaultMessageFormat = *(val.(*string))
+		case "HearSelf":
+			newconfig.HearSelf = *(val.(**bool))
 		case "UserRoster":
 			newconfig.UserRoster = *(val.(*[]UserRosterEntry))
 		case "ChannelRoster":
@@ -903,6 +909,10 @@ func loadConfig(preConnect bool) error {
 	processed.ScheduledJobs = st
 	if newconfig.IgnoreUsers != nil {
 		processed.ignoreUsers = newconfig.IgnoreUsers
+	}
+	processed.hearSelf = true
+	if newconfig.HearSelf != nil {
+		processed.hearSelf = *newconfig.HearSelf
 	}
 	if newconfig.JoinChannels != nil {
 		processed.joinChannels = newconfig.JoinChannels

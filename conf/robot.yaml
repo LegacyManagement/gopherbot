@@ -171,6 +171,10 @@ HistoryProvider: {{ $history }}
 ## BasicMarkdown is the v3 default portable format. Legacy robots that need
 ## protocol-native behavior can set this to Raw.
 DefaultMessageFormat: {{ env "GOPHER_MESSAGE_FORMAT" | default "BasicMarkdown" }}
+## Process connector-originated messages from the robot itself. Connectors
+## always forward recognized self messages with SelfMessage=true; the engine
+## owns the decision to process or ignore them.
+HearSelf: true
 
 TimeZone: {{ env "GOPHER_TIMEZONE" | default "America/New_York" }}
 

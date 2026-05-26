@@ -113,7 +113,6 @@ func TestAnnounceJoinBroadcastsToOtherUsersOnlyAndForwardsIncoming(t *testing.T)
 		handler: h,
 		cfg: sshConfig{
 			DefaultChannel: "general",
-			HearSelf:       true,
 		},
 		botName: "floyd",
 		botID:   "botid",
@@ -169,20 +168,19 @@ func TestAnnounceJoinBroadcastsToOtherUsersOnlyAndForwardsIncoming(t *testing.T)
 		t.Fatalf("unexpected incoming message text: %q", msg.MessageText)
 	}
 	if !msg.SelfMessage {
-		t.Fatalf("join announcement must be marked SelfMessage when HearSelf is enabled")
+		t.Fatalf("join announcement must be marked SelfMessage")
 	}
 	if msg.BotMessage {
 		t.Fatalf("join announcement should not force BotMessage command semantics")
 	}
 }
 
-func TestAnnounceJoinDoesNotForwardIncomingWhenHearSelfDisabled(t *testing.T) {
+func TestAnnounceJoinForwardsIncomingSelfMessage(t *testing.T) {
 	h := &testHandler{}
 	sc := &sshConnector{
 		handler: h,
 		cfg: sshConfig{
 			DefaultChannel: "general",
-			HearSelf:       false,
 		},
 		botName: "floyd",
 		botID:   "botid",
@@ -199,8 +197,11 @@ func TestAnnounceJoinDoesNotForwardIncomingWhenHearSelfDisabled(t *testing.T) {
 
 	sc.announceJoin(client)
 
-	if len(h.msgs) != 0 {
-		t.Fatalf("expected no incoming self-forward when HearSelf is disabled, got %d", len(h.msgs))
+	if len(h.msgs) != 1 {
+		t.Fatalf("expected forwarded incoming self message, got %d", len(h.msgs))
+	}
+	if !h.msgs[0].SelfMessage {
+		t.Fatalf("forwarded incoming message must be marked SelfMessage")
 	}
 }
 

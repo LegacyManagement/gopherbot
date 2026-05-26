@@ -15,7 +15,6 @@ Alias: {{ $botalias }}
 ProtocolConfig:
   StartChannel: general
   StartUser: alice
-  HearSelf: false # Needs to be enabled for individual robots
   # when true, Fixed = ALL UPPER CASE, Variable = all lower case
   MockFormatting: {{ eq (env "GOPHER_MOCK_FORMAT") "true" }}
   Channels:

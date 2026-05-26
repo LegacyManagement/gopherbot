@@ -319,6 +319,13 @@ func (h handler) IncomingMessage(inc *robot.ConnectorMessage) {
 	if incomingProtocol == "" {
 		incomingProtocol = "unknown"
 	}
+	currentCfg.RLock()
+	hearSelf := currentCfg.hearSelf
+	currentCfg.RUnlock()
+	if inc.SelfMessage && !hearSelf {
+		Log(robot.Debug, "Ignoring self message on protocol '%s' because HearSelf is false", incomingProtocol)
+		return
+	}
 	if len(inc.UserName) == 0 && len(inc.UserID) == 0 {
 		Log(robot.Error, "Incoming message with no username or user ID (protocol: %s)", incomingProtocol)
 		return

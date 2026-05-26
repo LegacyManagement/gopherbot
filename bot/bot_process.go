@@ -84,6 +84,7 @@ type configuration struct {
 	ignoreUsers          []string            // list of users to never listen to, like other bots
 	joinChannels         []string            // list of channels to join
 	ignoreUnlistedUsers  bool                // ignore users not listed in the UserRoster
+	hearSelf             bool                // process connector-marked messages from the robot itself
 	secureParamRetrieve  bool                // don't publish parameters as environment variables
 	httpDebug            bool                // whether http API debug logging is enabled
 	defaultMessageFormat robot.MessageFormat // BasicMarkdown unless set to another supported format
