@@ -116,6 +116,16 @@ PluginApprovers:
     `subsystem:secrets`, `subsystem:routing`, `subsystem:help`,
     `subsystem:security`, `runtime:go`, `runtime:lua`, `runtime:js`, and
     `runtime:sh`.
+- [ ] Cleanup: compiled-in `GoJobs`, `GoPlugins`, and `GoTasks` are now always
+  privileged (wrt "privsep") after the multi-process privilege-separation
+  redesign.
+  Follow-up:
+  - audit configuration loading so compiled-in Go extension privilege handling
+    is explicit and cannot imply configurable unprivileged execution
+  - update user-facing and AI-facing documentation to reflect the post-privsep
+    behavior
+  - clarify the meaning of "privileged" WRT parameter access
+  - preserve the current docs for now; this is a later cleanup slice
 - [ ] Perform pre-2.9.0 pilot robot migration dry-runs:
   - Search each selected custom robot for `{{ decrypt` and move remaining
     encrypted values into custom-only `conf/variables/*.yaml` files.
