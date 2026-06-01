@@ -22,6 +22,8 @@ LocalPort: 0
 ExternalPlugins:
   "gosec":
     Path: plugins/test/gofull.go
+  "gosecself":
+    Path: plugins/test/gofull.go
 
 WorkSpace: workspace
 Brain: mem

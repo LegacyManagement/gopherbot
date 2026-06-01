@@ -3,9 +3,16 @@ ReplyMatchers:
 - Label: approvalChoice
   Regex: '[a-z]'
 Config:
+  # Defaults to true when omitted. In strict mode, requesters cannot approve
+  # their own elevation even if listed as approvers.
+  DefaultStrict: true
   # Used when PluginApprovers does not list the current pipeline/plugin name.
   FallbackApprovers: []
-  # Per-plugin approvers supersede FallbackApprovers.
+  # Per-plugin approvers supersede FallbackApprovers. The list form keeps the
+  # global DefaultStrict setting. The object form can override Strict.
   # PluginApprovers:
   #   wireguard: [ alice, bob, david ]
+  #   deploy:
+  #     Approvers: [ alice, bob, david ]
+  #     Strict: false
   PluginApprovers: {}

@@ -224,11 +224,17 @@ Registered in `bot/builtin_userapproval.go` as `builtin-userapproval`.
 Behavior:
 
 - `_elevate <immediate>` loads `Config.FallbackApprovers` and
-  `Config.PluginApprovers`.
+  `Config.PluginApprovers`. `Config.DefaultStrict` defaults to `true` when
+  omitted.
 - The current pipeline/plugin name comes from `r.pipeName`.
 - `PluginApprovers.<pipeName>` supersedes `FallbackApprovers` when present.
-- The requester is excluded from the eligible approver list, so users cannot
-  approve their own elevation.
+- In strict mode, the requester is excluded from the eligible approver list, so
+  users cannot approve their own elevation. A per-plugin `Strict` value
+  overrides `DefaultStrict`.
+- In non-strict mode, if the requester is listed in the effective approver list,
+  the elevation is approved immediately without prompting another approver. If
+  the requester is not listed, the normal requester-selection and approver DM
+  flow is used.
 - The requester receives a lowercase-letter menu identifying the action as
   `plugin/command` when a plugin command is known, such as `vpn/add-device`,
   and must reply with a single lowercase letter matched by the elevator's
@@ -245,9 +251,13 @@ ReplyMatchers:
 - Label: approvalChoice
   Regex: '[a-z]'
 Config:
+  DefaultStrict: true
   FallbackApprovers: [ david, alice ]
   PluginApprovers:
     wireguard: [ alice, bob, david ]
+    deploy:
+      Approvers: [ alice, bob, david ]
+      Strict: false
 ```
 
 ## Interactive Jobs

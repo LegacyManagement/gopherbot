@@ -74,3 +74,16 @@ flow:
     receive:
       channel: general
       text_pattern: "Sorry, this command requires elevation"
+  - name: request-non-strict-self-approval
+    send:
+      user: alice
+      channel: general
+      text: ;go-sec-self-approval
+  - name: self-approval-granted
+    receive:
+      channel: general
+      text_pattern: "Approval granted by alice"
+  - name: non-strict-protected-command-runs
+    receive:
+      channel: general
+      text_pattern: "SECURITY CHECK: secelevated"

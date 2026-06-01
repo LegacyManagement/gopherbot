@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -10,8 +11,37 @@ import (
 const userApprovalChoiceMatcher = "approvalChoice"
 
 type userApprovalConfig struct {
-	FallbackApprovers []string            `json:"FallbackApprovers"`
-	PluginApprovers   map[string][]string `json:"PluginApprovers"`
+	DefaultStrict     *bool                                  `json:"DefaultStrict"`
+	FallbackApprovers []string                               `json:"FallbackApprovers"`
+	PluginApprovers   map[string]userApprovalPluginApprovers `json:"PluginApprovers"`
+}
+
+type userApprovalPluginApprovers struct {
+	Approvers    []string `json:"Approvers"`
+	Strict       *bool    `json:"Strict"`
+	hasApprovers bool
+}
+
+func (p *userApprovalPluginApprovers) UnmarshalJSON(data []byte) error {
+	var approvers []string
+	if err := json.Unmarshal(data, &approvers); err == nil {
+		p.Approvers = approvers
+		p.hasApprovers = true
+		p.Strict = nil
+		return nil
+	}
+
+	var cfg struct {
+		Approvers []string `json:"Approvers"`
+		Strict    *bool    `json:"Strict"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return err
+	}
+	p.Approvers = cfg.Approvers
+	p.Strict = cfg.Strict
+	p.hasApprovers = cfg.Approvers != nil
+	return nil
 }
 
 type userApprovalRuntime interface {
@@ -58,7 +88,14 @@ func runUserApproval(r userApprovalRuntime) robot.TaskRetVal {
 	requester := canonicalApprovalUser(r.GetMessage().User)
 	pipeName := strings.TrimSpace(r.pipelineNameForApproval())
 	actionName := userApprovalActionName(pipeName, r.commandNameForApproval())
-	approvers := effectiveApprovalApprovers(cfg, pipeName, requester)
+	approval := effectiveApprovalPolicy(cfg, pipeName, requester)
+	if !approval.strict && approval.requesterListed {
+		r.Log(robot.Audit, "builtin-userapproval auto-approved pipeline '%s' for requester '%s' because requester is a configured approver and strict mode is disabled", pipeName, requester)
+		r.Say("Approval granted by %s", requester)
+		return robot.Success
+	}
+
+	approvers := approval.approvers
 	if len(approvers) == 0 {
 		r.Log(robot.Error, "builtin-userapproval has no eligible approvers for pipeline '%s', requester '%s'", pipeName, requester)
 		r.Say("No eligible approvers are configured for this action")
@@ -102,18 +139,29 @@ func runUserApproval(r userApprovalRuntime) robot.TaskRetVal {
 	return robot.Fail
 }
 
+type userApprovalPolicy struct {
+	approvers       []string
+	strict          bool
+	requesterListed bool
+}
+
 func effectiveApprovalApprovers(cfg userApprovalConfig, pipeName, requester string) []string {
-	source := cfg.FallbackApprovers
-	if cfg.PluginApprovers != nil {
-		if pluginApprovers, ok := cfg.PluginApprovers[pipeName]; ok {
-			source = pluginApprovers
-		}
-	}
+	return effectiveApprovalPolicy(cfg, pipeName, requester).approvers
+}
+
+func effectiveApprovalPolicy(cfg userApprovalConfig, pipeName, requester string) userApprovalPolicy {
+	source, strict := effectiveApprovalSource(cfg, pipeName)
 	seen := make(map[string]struct{}, len(source))
 	approvers := make([]string, 0, len(source))
+	requester = canonicalApprovalUser(requester)
+	requesterListed := false
 	for _, approver := range source {
 		approver = canonicalApprovalUser(approver)
-		if approver == "" || approver == requester {
+		if approver == "" {
+			continue
+		}
+		if approver == requester {
+			requesterListed = true
 			continue
 		}
 		if _, exists := seen[approver]; exists {
@@ -122,7 +170,30 @@ func effectiveApprovalApprovers(cfg userApprovalConfig, pipeName, requester stri
 		seen[approver] = struct{}{}
 		approvers = append(approvers, approver)
 	}
-	return approvers
+	return userApprovalPolicy{
+		approvers:       approvers,
+		strict:          strict,
+		requesterListed: requesterListed,
+	}
+}
+
+func effectiveApprovalSource(cfg userApprovalConfig, pipeName string) ([]string, bool) {
+	strict := true
+	if cfg.DefaultStrict != nil {
+		strict = *cfg.DefaultStrict
+	}
+	source := cfg.FallbackApprovers
+	if cfg.PluginApprovers != nil {
+		if pluginApprovers, ok := cfg.PluginApprovers[pipeName]; ok {
+			if pluginApprovers.hasApprovers {
+				source = pluginApprovers.Approvers
+			}
+			if pluginApprovers.Strict != nil {
+				strict = *pluginApprovers.Strict
+			}
+		}
+	}
+	return source, strict
 }
 
 func canonicalApprovalUser(user string) string {
