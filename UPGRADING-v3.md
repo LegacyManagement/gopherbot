@@ -71,6 +71,27 @@ Configuration responsibilities are split:
 - Remove any custom `BrainCache.RequireRemoteCleanOnStartup` setting; it is no
   longer a valid v3 configuration key.
 
+DynamoDB uses the AWS SDK default credential chain when `AccessKeyID` and
+`SecretAccessKey` are omitted from `BrainConfig`. This includes local shared
+credentials/profiles and EC2 instance credentials. If you configure static
+DynamoDB credentials in custom config, store the encrypted values under custom
+`conf/variables/*.yaml` `Secrets` and reference them from
+`conf/brains/dynamo.yaml`:
+
+```yaml
+BrainConfig:
+  TableName: "atlas-brain"
+  Region: "us-east-2"
+  AccessKeyID: {{ secret "DYNAMO_ACCESS_KEY_ID" | printf "%q" }}
+  SecretAccessKey: {{ secret "DYNAMO_SECRET_ACCESS_KEY" | printf "%q" }}
+```
+
+Do not paste encrypted ciphertext directly into `AccessKeyID` or
+`SecretAccessKey`; provider config receives the expanded plaintext value. If a
+local profile or instance role should be used, leave those static keys out of
+`BrainConfig` and make sure higher-priority `AWS_*` environment variables are
+not accidentally overriding the desired source.
+
 Cloudflare KV accepts these optional `BrainConfig` sync settings:
 
 ```yaml

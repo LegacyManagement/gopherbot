@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -101,11 +102,7 @@ func (db *brainConfig) Delete(key string) error {
 
 func (db *brainConfig) List() ([]string, error) {
 	keys := make([]string, 0)
-	keyName := "Memory"
-	scan := &dynamodb.ScanInput{
-		ProjectionExpression: &keyName,
-		TableName:            aws.String(dynamocfg.TableName),
-	}
+	scan := dynamoListKeysScanInput(dynamocfg.TableName)
 	res, err := svc.Scan(context.Background(), scan)
 	if err != nil {
 		return keys, err
@@ -138,12 +135,18 @@ func provider(r robot.Handler) robot.SimpleBrain {
 
 func remoteProvider(r robot.Handler) robot.RemoteBrainBackend {
 	handler = r
-	handler.GetBrainConfig(&dynamocfg)
+	if err := handler.GetBrainConfig(&dynamocfg); err != nil {
+		handler.Log(robot.Fatal, "Unable to retrieve DynamoDB brain configuration: %v", err)
+	}
+	cfgCopy, err := normalizeDynamoConfig(dynamocfg)
+	if err != nil {
+		handler.Log(robot.Fatal, "Invalid DynamoDB brain configuration: %v", err)
+	}
+	dynamocfg = cfgCopy
 	ctx := context.Background()
 	accessKeyID := dynamocfg.AccessKeyID
 	secretAccessKey := dynamocfg.SecretAccessKey
 	var cfg aws.Config
-	var err error
 	if len(accessKeyID) == 0 {
 		cfg, err = config.LoadDefaultConfig(ctx, config.WithRegion(dynamocfg.Region))
 		if err != nil {
@@ -155,6 +158,13 @@ func remoteProvider(r robot.Handler) robot.RemoteBrainBackend {
 		if err != nil {
 			handler.Log(robot.Fatal, "Unable to establish AWS session: %v", err)
 		}
+	}
+	resolvedCreds, err := cfg.Credentials.Retrieve(ctx)
+	if err != nil {
+		handler.Log(robot.Fatal, "Unable to resolve AWS credentials for DynamoDB brain: %v", err)
+	}
+	if err := validateDynamoAWSCredentials(resolvedCreds); err != nil {
+		handler.Log(robot.Fatal, "Invalid AWS credentials for DynamoDB brain: %v", err)
 	}
 	// Create DynamoDB client
 	svc = dynamodb.NewFromConfig(cfg)
@@ -168,6 +178,52 @@ func remoteProvider(r robot.Handler) robot.RemoteBrainBackend {
 	}
 
 	return &dynamoRemoteBrain{cfg: dynamocfg}
+}
+
+func normalizeDynamoConfig(cfg brainConfig) (brainConfig, error) {
+	cfg.TableName = strings.TrimSpace(cfg.TableName)
+	cfg.Region = strings.TrimSpace(cfg.Region)
+	cfg.AccessKeyID = strings.TrimSpace(cfg.AccessKeyID)
+	cfg.SecretAccessKey = strings.TrimSpace(cfg.SecretAccessKey)
+	if cfg.TableName == "" {
+		return cfg, errors.New("TableName is required")
+	}
+	if cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
+		return cfg, errors.New("SecretAccessKey is set but AccessKeyID is empty")
+	}
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" {
+		return cfg, errors.New("AccessKeyID is set but SecretAccessKey is empty")
+	}
+	return cfg, nil
+}
+
+func validateDynamoAWSCredentials(creds aws.Credentials) error {
+	source := strings.TrimSpace(creds.Source)
+	if source == "" {
+		source = "AWS credential chain"
+	}
+	if strings.TrimSpace(creds.AccessKeyID) == "" {
+		return fmt.Errorf("access key ID from %s is empty", source)
+	}
+	if strings.TrimSpace(creds.SecretAccessKey) == "" {
+		return fmt.Errorf("secret access key from %s is empty", source)
+	}
+	if reason := awsAccessKeyIDProblem(creds.AccessKeyID); reason != "" {
+		return fmt.Errorf("access key ID from %s is malformed (%s); check BrainConfig.AccessKeyID, AWS_ACCESS_KEY_ID, or the selected AWS profile; to use local shared credentials or EC2 instance credentials, omit static BrainConfig credentials and clear any malformed higher-priority AWS_* environment variables", source, reason)
+	}
+	return nil
+}
+
+func awsAccessKeyIDProblem(accessKeyID string) string {
+	switch {
+	case strings.TrimSpace(accessKeyID) != accessKeyID:
+		return "has leading or trailing whitespace"
+	case strings.ContainsAny(accessKeyID, " \t\r\n"):
+		return "contains whitespace"
+	case strings.ContainsAny(accessKeyID, ",/"):
+		return "contains a comma or slash"
+	}
+	return ""
 }
 
 type dynamoRemoteBrain struct {
@@ -242,11 +298,7 @@ func (db *dynamoRemoteBrain) Delete(ctx context.Context, tombstone robot.RemoteB
 }
 
 func (db *dynamoRemoteBrain) ListMetadata(ctx context.Context, cursor string, limit int) (robot.RemoteBrainPage, error) {
-	expr := "Memory, Format, Version, Checksum, Deleted, UpdatedAt"
-	input := &dynamodb.ScanInput{
-		ProjectionExpression: &expr,
-		TableName:            aws.String(dynamocfg.TableName),
-	}
+	input := dynamoListMetadataScanInput(dynamocfg.TableName)
 	res, err := svc.Scan(ctx, input)
 	if err != nil {
 		return robot.RemoteBrainPage{}, err
@@ -268,6 +320,33 @@ func (db *dynamoRemoteBrain) ListMetadata(ctx context.Context, cursor string, li
 		})
 	}
 	return robot.RemoteBrainPage{Records: records}, nil
+}
+
+func dynamoListKeysScanInput(tableName string) *dynamodb.ScanInput {
+	expr := "#memory"
+	return &dynamodb.ScanInput{
+		ProjectionExpression: &expr,
+		ExpressionAttributeNames: map[string]string{
+			"#memory": "Memory",
+		},
+		TableName: aws.String(tableName),
+	}
+}
+
+func dynamoListMetadataScanInput(tableName string) *dynamodb.ScanInput {
+	expr := "#memory, #format, #version, #checksum, #deleted, #updatedAt"
+	return &dynamodb.ScanInput{
+		ProjectionExpression: &expr,
+		ExpressionAttributeNames: map[string]string{
+			"#memory":    "Memory",
+			"#format":    "Format",
+			"#version":   "Version",
+			"#checksum":  "Checksum",
+			"#deleted":   "Deleted",
+			"#updatedAt": "UpdatedAt",
+		},
+		TableName: aws.String(tableName),
+	}
 }
 
 func (db *dynamoRemoteBrain) Shutdown() {}

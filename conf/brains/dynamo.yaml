@@ -1,5 +1,8 @@
 BrainConfig:
   TableName: "your table name here"
   Region: {{ env "GOPHER_BRAIN_REGION" | default "us-east-1" }}
-  AccessKeyID: "replace with encrypted value"
-  SecretAccessKey: "replace with encrypted value"
+  # Optional static credentials may be added in custom config as AccessKeyID
+  # and SecretAccessKey. When they are omitted, the AWS SDK default credential
+  # chain is used, including local shared credentials/profiles and EC2 instance
+  # credentials. Store static credential values in custom conf/variables
+  # Secrets and reference them with the secret template function.
