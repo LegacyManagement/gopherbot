@@ -135,6 +135,19 @@ PluginApprovers:
     hidden-command support against real configs.
   - Treat pilot findings as bugfix/UX work only unless a critical configuration
     break is discovered.
+- [ ] BUG: Reload did not activate newly added secondary protocol in Atlas pilot.
+  Repro note from 2026-06-16: adding `slack` to `SecondaryProtocols` for Atlas
+  and running `reload` did not bring the Slack secondary online, while a process
+  restart did. Current architecture docs and unit coverage say reload should
+  reconcile added/removed secondary protocols, so treat this as a runtime bug or
+  masked secondary-start failure/reporting bug rather than intended behavior.
+  Follow-up:
+  - reproduce against Atlas or a minimal process-backed config with a secondary
+    added after startup
+  - check whether `reconcileSecondaryConnectorRuntimes` starts the connector and
+    whether any failure is only logged while reload still reports success
+  - make reload outcome/operator feedback reflect failed secondary activation
+    if connector isolation remains intentionally non-fatal
 - [ ] Make thread subscription expiration configurable instead of fixed constant:
   Current behavior uses `threadMemoryDuration = 7 * 24h` in `bot/brain.go`, and thread subscriptions are expired by `expireSubscriptions` in `bot/subscribe_thread.go`.
   This affects long-running AI thread continuity after inactivity when using subscription-based routing.
