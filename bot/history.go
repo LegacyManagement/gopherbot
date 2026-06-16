@@ -55,30 +55,31 @@ Returns:
 */
 func newLogger(tag, eid, descriptor string, wid, keep int) (logger *pipelineLiveLogger, url, ref string, idx int) {
 	var ph pipeHistory
+	idx = wid
 	// limit the number of logs kept to 64 =< 4096/64 (back of napkin
 	// calculation for listing logs w/ max message size of 4096)
 	if keep > 64 {
 		keep = 64
 	}
-	// Check out the memory for this specific history
-	key := histPrefix + tag
-	phtok, _, phret := checkoutDatum(key, &ph, true)
-	if phret != robot.Ok {
-		Log(robot.Error, "Checking out '%s', no history will be remembered for this pipeline", tag)
-		idx = wid
-		keep = 0
-	} else {
-		idx = ph.NextIndex
-		ph.NextIndex++
-		if ph.NextIndex == maxIndex {
-			ph.NextIndex = 0
-		}
-		// Check out the memory mapping Ref's to logs
-		var hmtok string
-		var hmret robot.RetVal
-		var remove []historyLog
-		hm := make(map[string]historyLookup)
-		if keep > 0 {
+	if keep > 0 {
+		// Check out the memory for this specific history. Pipelines without
+		// retained logs use the ephemeral worker id and avoid durable brain noise.
+		key := histPrefix + tag
+		phtok, _, phret := checkoutDatum(key, &ph, true)
+		if phret != robot.Ok {
+			Log(robot.Error, "Checking out '%s', no history will be remembered for this pipeline", tag)
+			keep = 0
+		} else {
+			idx = ph.NextIndex
+			ph.NextIndex++
+			if ph.NextIndex == maxIndex {
+				ph.NextIndex = 0
+			}
+			// Check out the memory mapping Ref's to logs
+			var hmtok string
+			var hmret robot.RetVal
+			var remove []historyLog
+			hm := make(map[string]historyLookup)
 			hmtok, _, hmret = checkoutDatum(histLookup, &hm, true)
 			if hmret == robot.Ok {
 				ref = eid
@@ -108,19 +109,19 @@ func newLogger(tag, eid, descriptor string, wid, keep int) (logger *pipelineLive
 				remove = ph.Histories[0 : l-keep]
 				ph.Histories = ph.Histories[l-keep:]
 			}
-		}
-		mret := updateDatum(key, phtok, ph)
-		if mret != robot.Ok {
-			Log(robot.Error, "Updating '%s', no history will be remembered for the pipeline", tag)
-			idx = wid
-			keep = 0
-		} else if keep > 0 && hmret == robot.Ok {
-			for _, rm := range remove {
-				delete(hm, rm.Ref)
-			}
-			mret := updateDatum(histLookup, hmtok, hm)
+			mret := updateDatum(key, phtok, ph)
 			if mret != robot.Ok {
-				Log(robot.Error, "Updating '%s' failed for '%s', no lookups will be available for this log", histLookup, tag)
+				Log(robot.Error, "Updating '%s', no history will be remembered for the pipeline", tag)
+				idx = wid
+				keep = 0
+			} else if hmret == robot.Ok {
+				for _, rm := range remove {
+					delete(hm, rm.Ref)
+				}
+				mret := updateDatum(histLookup, hmtok, hm)
+				if mret != robot.Ok {
+					Log(robot.Error, "Updating '%s' failed for '%s', no lookups will be available for this log", histLookup, tag)
+				}
 			}
 		}
 	}
