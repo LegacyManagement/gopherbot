@@ -842,6 +842,9 @@ The standardized engine callback commands are:
 - `_subscribed`
 - `_expiresub`
 
+Existing plugins will need to be updated to respond to the new engine-owned
+commands, e.g. "configure" -> "_configure", "init" -> "_init".
+
 For jobs, the internal command name is still engine-only and is not passed to
 job handlers; job handlers receive only the job arguments.
 
