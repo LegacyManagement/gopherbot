@@ -537,6 +537,48 @@ func TestAIProviderName(t *testing.T) {
 	}
 }
 
+func TestMakeStreamUIHintsDefaultsMissingMultipartNotices(t *testing.T) {
+	hints := makeStreamUIHints(conversationState{}, aiConfig{})
+
+	if hints.MultipartStartNotice != defaultMultipartStartNotice {
+		t.Fatalf("MultipartStartNotice = %q, want %q", hints.MultipartStartNotice, defaultMultipartStartNotice)
+	}
+	if hints.MultipartContinueNotice != defaultMultipartContinueNotice {
+		t.Fatalf("MultipartContinueNotice = %q, want %q", hints.MultipartContinueNotice, defaultMultipartContinueNotice)
+	}
+	if hints.MultipartEndNotice != defaultMultipartEndNotice {
+		t.Fatalf("MultipartEndNotice = %q, want %q", hints.MultipartEndNotice, defaultMultipartEndNotice)
+	}
+	if hints.MultipartInterrupted != defaultMultipartInterruptedNotice {
+		t.Fatalf("MultipartInterrupted = %q, want %q", hints.MultipartInterrupted, defaultMultipartInterruptedNotice)
+	}
+}
+
+func TestMakeStreamUIHintsAllowsEmptyMultipartNotices(t *testing.T) {
+	empty := ""
+	cfg := aiConfig{
+		MultipartStartNotice:       &empty,
+		MultipartContinueNotice:    &empty,
+		MultipartEndNotice:         &empty,
+		MultipartInterruptedNotice: &empty,
+	}
+
+	hints := makeStreamUIHints(conversationState{}, cfg)
+
+	if hints.MultipartStartNotice != "" {
+		t.Fatalf("MultipartStartNotice = %q, want empty", hints.MultipartStartNotice)
+	}
+	if hints.MultipartContinueNotice != "" {
+		t.Fatalf("MultipartContinueNotice = %q, want empty", hints.MultipartContinueNotice)
+	}
+	if hints.MultipartEndNotice != "" {
+		t.Fatalf("MultipartEndNotice = %q, want empty", hints.MultipartEndNotice)
+	}
+	if hints.MultipartInterrupted != "" {
+		t.Fatalf("MultipartInterrupted = %q, want empty", hints.MultipartInterrupted)
+	}
+}
+
 func TestFriendlyAIErrorUsesProviderName(t *testing.T) {
 	got := friendlyAIError("Gemini", http.StatusUnauthorized, "401 Unauthorized", nil)
 	if !strings.Contains(got, "Gemini authentication failed") {

@@ -20,7 +20,7 @@ Config:
   - "working on an image"
   - "drawing now"
   - "rendering your request"
-  ## Streaming markers for multipart replies.
+  ## Streaming markers for multipart replies. Set any marker to "" to disable it.
   MultipartStartNotice: "_(replying in parts...)_"
   MultipartContinueNotice: "_(continuing...)_"
   MultipartEndNotice: "_(end reply)_"

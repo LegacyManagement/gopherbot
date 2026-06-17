@@ -151,10 +151,10 @@ type aiConfig struct {
 	WaitMessages               []string             `json:"WaitMessages"`
 	HeardNotice                string               `json:"HeardNotice"`
 	DrawMessages               []string             `json:"DrawMessages"`
-	MultipartStartNotice       string               `json:"MultipartStartNotice"`
-	MultipartContinueNotice    string               `json:"MultipartContinueNotice"`
-	MultipartEndNotice         string               `json:"MultipartEndNotice"`
-	MultipartInterruptedNotice string               `json:"MultipartInterruptedNotice"`
+	MultipartStartNotice       *string              `json:"MultipartStartNotice"`
+	MultipartContinueNotice    *string              `json:"MultipartContinueNotice"`
+	MultipartEndNotice         *string              `json:"MultipartEndNotice"`
+	MultipartInterruptedNotice *string              `json:"MultipartInterruptedNotice"`
 	Profiles                   map[string]aiProfile `json:"Profiles"`
 	CompactionTriggerTokens    int                  `json:"CompactionTriggerTokens"`
 	MaxRecentExchanges         int                  `json:"MaxRecentExchanges"`
@@ -535,11 +535,11 @@ func isDirectMessage(r robot.Robot) bool {
 	return strings.TrimSpace(msg.Channel) == ""
 }
 
-func resolveNotice(value, fallback string) string {
-	if trimmed := strings.TrimSpace(value); trimmed != "" {
-		return trimmed
+func resolveNotice(value *string, fallback string) string {
+	if value == nil {
+		return fallback
 	}
-	return fallback
+	return strings.TrimSpace(*value)
 }
 
 func makeStreamUIHints(state conversationState, cfg aiConfig) streamUIHints {
