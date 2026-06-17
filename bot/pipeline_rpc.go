@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 const pipelineRPCProtocolVersion = 1
@@ -39,6 +40,30 @@ func newPipelineChildRPCCommandForRole(role privsepChildRole) *exec.Cmd {
 	extraEnv = appendPrivsepRoleEnv(extraEnv, role)
 	cmd.Env = sanitizedChildEnvironment(extraEnv...)
 	return cmd
+}
+
+func newPipelineChildRPCCommandForRoleInDir(role privsepChildRole, workDir string) (*exec.Cmd, error) {
+	cmd := newPipelineChildRPCCommandForRole(role)
+	resolvedWorkDir, err := resolvePipelineRPCWorkDir(workDir)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Dir = resolvedWorkDir
+	return cmd, nil
+}
+
+func resolvePipelineRPCWorkDir(workDir string) (string, error) {
+	if workDir == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(workDir) {
+		absDir, err := filepath.Abs(workDir)
+		if err != nil {
+			return "", fmt.Errorf("resolving rpc child working directory %q: %w", workDir, err)
+		}
+		workDir = absDir
+	}
+	return filepath.Clean(workDir), nil
 }
 
 func runPipelineChildRPC() int {

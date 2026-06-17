@@ -45,6 +45,21 @@ func TestNewPipelineChildRPCCommand(t *testing.T) {
 	}
 }
 
+func TestNewPipelineChildRPCCommandForRoleInDir(t *testing.T) {
+	workDir := t.TempDir()
+
+	cmd, err := newPipelineChildRPCCommandForRoleInDir(privsepRoleUnprivileged, workDir)
+	if err != nil {
+		t.Fatalf("newPipelineChildRPCCommandForRoleInDir() error = %v", err)
+	}
+	if cmd.Dir != workDir {
+		t.Fatalf("cmd.Dir = %q, want %q", cmd.Dir, workDir)
+	}
+	if !envContains(cmd.Env, privsepChildRoleEnv+"="+string(privsepRoleUnprivileged)) {
+		t.Fatalf("child rpc env missing %s=%s: %#v", privsepChildRoleEnv, privsepRoleUnprivileged, cmd.Env)
+	}
+}
+
 func TestRunPipelineChildRPCWithIOHandshakeAndShutdown(t *testing.T) {
 	input := strings.Join([]string{
 		`{"version":1,"id":"hello-1","type":"hello"}`,

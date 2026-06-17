@@ -71,6 +71,11 @@ callTask()
           └─> exec.Command() with GOPHER_HTTP_POST in environment
 ```
 
+Built-in interpreter children and external executable scripts receive the same
+working-directory behavior. `Homed: true` starts execution in the robot home
+directory; otherwise execution starts in the current pipeline working
+directory, including changes made through `SetWorkingDirectory`.
+
 ## Plugin Contract by Language
 
 Config key note: in v3 plugin config, directed command matchers must be under `Commands`. Legacy `CommandMatchers` and top-level `Help` are no longer accepted.

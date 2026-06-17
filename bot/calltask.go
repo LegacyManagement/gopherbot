@@ -166,6 +166,10 @@ func getDefCfgThread(cchan chan<- getCfgReturn, ti interface{}) {
 			configureEnv = append(configureEnv, fmt.Sprintf("%s=%s", p, value))
 		}
 	}
+	configureWorkDir, wdErr := os.Getwd()
+	if wdErr != nil {
+		configureWorkDir = "."
+	}
 	if taskPath, err = getTaskPath(task, "."); err != nil {
 		if !isExternalInterpreterTask && taskPath == "" {
 			cchan <- getCfgReturn{nil, err}
@@ -173,7 +177,7 @@ func getDefCfgThread(cchan chan<- getCfgReturn, ti interface{}) {
 		}
 		if isExternalGoTask {
 			Log(robot.Info, "Calling func Configure for external Go plugin '"+task.name+"'")
-			if defConfig, err := runGoGetConfigViaRPC(taskPath, task.name, task.Privileged); err != nil {
+			if defConfig, err := runGoGetConfigViaRPC(taskPath, task.name, configureWorkDir, task.Privileged); err != nil {
 				Log(robot.Warn, "unable to retrieve plugin default configuration for '%s': %s", task.name, err.Error())
 				// This error shouldn't disable an external Go plugin
 				cchan <- getCfgReturn{&cfg, nil}
@@ -184,7 +188,7 @@ func getDefCfgThread(cchan chan<- getCfgReturn, ti interface{}) {
 			}
 		} else if isExternalLuaTask {
 			Log(robot.Info, "getting default configuration for external Lua plugin '"+task.name+"'")
-			if defConfig, err := runLuaGetConfigViaRPC(taskPath, task.name, libPaths(), emptyBot(), task.Privileged); err != nil {
+			if defConfig, err := runLuaGetConfigViaRPC(taskPath, task.name, configureWorkDir, libPaths(), emptyBot(), task.Privileged); err != nil {
 				Log(robot.Warn, "unable to retrieve plugin default configuration for '%s': %s", task.name, err.Error())
 				// This error shouldn't disable an external Lua plugin
 				cchan <- getCfgReturn{&cfg, nil}
@@ -196,7 +200,7 @@ func getDefCfgThread(cchan chan<- getCfgReturn, ti interface{}) {
 		} else if isExternalJSTask {
 			// Assuming you have a similar function for JavaScript
 			Log(robot.Info, "getting default configuration for external JavaScript plugin '"+task.name+"'")
-			if defConfig, err := runJSGetConfigViaRPC(taskPath, task.name, libPaths(), emptyBot(), task.Privileged); err != nil {
+			if defConfig, err := runJSGetConfigViaRPC(taskPath, task.name, configureWorkDir, libPaths(), emptyBot(), task.Privileged); err != nil {
 				Log(robot.Warn, "unable to retrieve plugin default configuration for '%s': %s", task.name, err.Error())
 				// This error shouldn't disable an external JS plugin
 				cchan <- getCfgReturn{&cfg, nil}
@@ -207,7 +211,7 @@ func getDefCfgThread(cchan chan<- getCfgReturn, ti interface{}) {
 			}
 		} else if isExternalGSHTask {
 			Log(robot.Info, "getting default configuration for external Gopherbot shell plugin '"+task.name+"'")
-			if defConfig, err := runGSHGetConfigViaRPC(taskPath, task.name, configureEnv, task.Privileged); err != nil {
+			if defConfig, err := runGSHGetConfigViaRPC(taskPath, task.name, configureWorkDir, configureEnv, task.Privileged); err != nil {
 				Log(robot.Warn, "unable to retrieve plugin default configuration for '%s': %s", task.name, err.Error())
 				cchan <- getCfgReturn{&cfg, nil}
 				return
@@ -474,12 +478,12 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 	isExternalJSTask := strings.HasSuffix(task.Path, ".js")
 	isExternalGSHTask := strings.HasSuffix(task.Path, ".gsh")
 	isExternalInterpreterTask := isExternalGoTask || isExternalJSTask || isExternalLuaTask || isExternalGSHTask
-	var err error
-	if task.Homed || isExternalInterpreterTask {
-		taskPath, err = getTaskPath(task, ".")
-	} else {
-		taskPath, err = getTaskPath(task, workdir)
+	taskDir := workdir
+	if task.Homed {
+		taskDir = "."
 	}
+	var err error
+	taskPath, err = getTaskPath(task, taskDir)
 	if err != nil && !isExternalInterpreterTask && taskPath != "" {
 		emit(ExternalTaskBadPath)
 		rchan <- taskReturn{fmt.Sprintf("Getting the path for %s: %v", task.name, err), robot.MechanismFail}
@@ -529,7 +533,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 			if command != "_init" && !opts.suppressEmit {
 				emit(GoPluginRan)
 			}
-			ret, err := runGoPluginViaRPC(taskPath, task.name, env, task.Privileged, privileged, w, r, append([]string{command}, args...))
+			ret, err := runGoPluginViaRPC(taskPath, task.name, taskDir, env, task.Privileged, privileged, w, r, append([]string{command}, args...))
 			if err != nil {
 				emit(ExternalTaskBadInterpreter)
 				rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running plugin %s", task.name), err), robot.MechanismFail}
@@ -541,7 +545,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 		} else {
 			var ret robot.TaskRetVal
 			if isJob {
-				ret, err = runGoJobViaRPC(taskPath, task.name, env, task.Privileged, privileged, w, r, args)
+				ret, err = runGoJobViaRPC(taskPath, task.name, taskDir, env, task.Privileged, privileged, w, r, args)
 				if err != nil {
 					emit(ExternalTaskBadInterpreter)
 					rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running job %s", task.name), err), robot.MechanismFail}
@@ -549,7 +553,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 				}
 				w.Log(robot.Debug, "External Go job '%s' executed with args: %q", task.name, args)
 			} else {
-				ret, err = runGoTaskViaRPC(taskPath, task.name, env, task.Privileged, privileged, w, r, args)
+				ret, err = runGoTaskViaRPC(taskPath, task.name, taskDir, env, task.Privileged, privileged, w, r, args)
 				if err != nil {
 					emit(ExternalTaskBadInterpreter)
 					rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running task %s", task.name), err), robot.MechanismFail}
@@ -572,7 +576,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 			// Prepend the command to args, so Lua sees args[1] == <command>
 			allArgs := append([]string{command}, args...)
 
-			ret, err := runLuaExtensionViaRPC(taskPath, task.name, libPaths(), scriptBot(envhash), privileged, w, r, allArgs)
+			ret, err := runLuaExtensionViaRPC(taskPath, task.name, taskDir, libPaths(), scriptBot(envhash), privileged, w, r, allArgs)
 			if err != nil {
 				emit(ExternalTaskBadInterpreter)
 				rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running Lua plugin %s", task.name), err), robot.MechanismFail}
@@ -585,7 +589,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 			var ret robot.TaskRetVal
 			// For jobs/tasks, pass args directly; no "command" prepended.
 			if isJob {
-				ret, err = runLuaExtensionViaRPC(taskPath, task.name, libPaths(), scriptBot(envhash), privileged, w, r, args)
+				ret, err = runLuaExtensionViaRPC(taskPath, task.name, taskDir, libPaths(), scriptBot(envhash), privileged, w, r, args)
 				if err != nil {
 					emit(ExternalTaskBadInterpreter)
 					rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running Lua job %s", task.name), err), robot.MechanismFail}
@@ -593,7 +597,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 				}
 				w.Log(robot.Debug, "External Lua job '%s' executed with args: %q", task.name, args)
 			} else {
-				ret, err = runLuaExtensionViaRPC(taskPath, task.name, libPaths(), scriptBot(envhash), privileged, w, r, args)
+				ret, err = runLuaExtensionViaRPC(taskPath, task.name, taskDir, libPaths(), scriptBot(envhash), privileged, w, r, args)
 				if err != nil {
 					emit(ExternalTaskBadInterpreter)
 					rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running Lua task %s", task.name), err), robot.MechanismFail}
@@ -616,7 +620,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 			// Prepend the command to args, so JavaScript sees args[1] == <command>
 			allArgs := append([]string{command}, args...)
 
-			ret, err := runJSExtensionViaRPC(taskPath, task.name, libPaths(), scriptBot(envhash), privileged, w, r, allArgs)
+			ret, err := runJSExtensionViaRPC(taskPath, task.name, taskDir, libPaths(), scriptBot(envhash), privileged, w, r, allArgs)
 			if err != nil {
 				emit(ExternalTaskBadInterpreter)
 				rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running JavaScript plugin %s", task.name), err), robot.MechanismFail}
@@ -629,7 +633,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 			var ret robot.TaskRetVal
 			// For jobs/tasks, pass args directly; no "command" prepended.
 			if isJob {
-				ret, err = runJSExtensionViaRPC(taskPath, task.name, libPaths(), scriptBot(envhash), privileged, w, r, args)
+				ret, err = runJSExtensionViaRPC(taskPath, task.name, taskDir, libPaths(), scriptBot(envhash), privileged, w, r, args)
 				if err != nil {
 					emit(ExternalTaskBadInterpreter)
 					rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running JavaScript job %s", task.name), err), robot.MechanismFail}
@@ -637,7 +641,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 				}
 				w.Log(robot.Debug, "External JavaScript job '%s' executed with args: %q", task.name, args)
 			} else {
-				ret, err = runJSExtensionViaRPC(taskPath, task.name, libPaths(), scriptBot(envhash), privileged, w, r, args)
+				ret, err = runJSExtensionViaRPC(taskPath, task.name, taskDir, libPaths(), scriptBot(envhash), privileged, w, r, args)
 				if err != nil {
 					emit(ExternalTaskBadInterpreter)
 					rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running JavaScript task %s", task.name), err), robot.MechanismFail}
@@ -657,7 +661,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 				emit(ExternalTaskRan)
 			}
 			allArgs := append([]string{command}, args...)
-			ret, err := runGSHExtensionViaRPC(taskPath, task.name, env, privileged, w, r, allArgs)
+			ret, err := runGSHExtensionViaRPC(taskPath, task.name, taskDir, env, privileged, w, r, allArgs)
 			if err != nil {
 				emit(ExternalTaskBadInterpreter)
 				rchan <- taskReturn{logTaskExecutionError(w, fmt.Sprintf("Running Gopherbot shell plugin %s", task.name), err), robot.MechanismFail}
@@ -668,7 +672,7 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 			return
 		}
 
-		ret, err := runGSHExtensionViaRPC(taskPath, task.name, env, privileged, w, r, args)
+		ret, err := runGSHExtensionViaRPC(taskPath, task.name, taskDir, env, privileged, w, r, args)
 		if err != nil {
 			emit(ExternalTaskBadInterpreter)
 			label := "task"
@@ -694,10 +698,6 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 		externalArgs = append(externalArgs, command)
 	}
 	externalArgs = append(externalArgs, args...)
-	taskDir := workdir
-	if task.Homed {
-		taskDir = "."
-	}
 	errString, retval = w.runExternalExecutableTask(task, plugin, command, taskPath, taskDir, externalArgs, env, keys, logger, privileged, opts, eid)
 	rchan <- taskReturn{errString, retval}
 }

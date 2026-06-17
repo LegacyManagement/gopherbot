@@ -48,6 +48,7 @@ printf 'head=%s tail=%s lines=%s decode=%s jq=%s uniq=%s\n' "$head_line" "$tail_
 	ret, err := runScript(
 		script,
 		"utilities-test",
+		tmp,
 		[]string{
 			"GOPHER_WORKSPACE=" + tmp,
 			"GOPHER_INSTALLDIR=" + tmp,
@@ -68,5 +69,59 @@ printf 'head=%s tail=%s lines=%s decode=%s jq=%s uniq=%s\n' "$head_line" "$tail_
 	want := "head=beta tail=beta lines=3 decode=ship jq=go uniq=alpha,beta"
 	if got != want {
 		t.Fatalf("utility output = %q, want %q", got, want)
+	}
+}
+
+func TestRunScriptUsesWorkDirInsteadOfScriptDir(t *testing.T) {
+	home := t.TempDir()
+	scriptDir := filepath.Join(home, "jobs")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("creating script dir: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(home, "custom"), 0o755); err != nil {
+		t.Fatalf("creating custom dir: %v", err)
+	}
+	outPath := filepath.Join(home, "cwd.txt")
+	script := writeTempScript(t, scriptDir, "install-libs.gsh", `#!/bin/sh
+pwd > "$OUT_PATH"
+cd custom
+pwd >> "$OUT_PATH"
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	ret, err := runScript(
+		script,
+		"install-libs-test",
+		home,
+		[]string{
+			"OUT_PATH=" + outPath,
+			"GOPHER_INSTALLDIR=" + home,
+		},
+		nil,
+		nil,
+		nil,
+		&stdout,
+		&stderr,
+	)
+	if err != nil {
+		t.Fatalf("runScript() error = %v; stderr=%q", err, stderr.String())
+	}
+	if ret != robot.Normal {
+		t.Fatalf("runScript() ret = %v, want %v; stderr=%q", ret, robot.Normal, stderr.String())
+	}
+	gotBytes, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("reading cwd output: %v", err)
+	}
+	got := strings.Split(strings.TrimSpace(string(gotBytes)), "\n")
+	if len(got) != 2 {
+		t.Fatalf("cwd output lines = %#v, want two lines", got)
+	}
+	if got[0] != home {
+		t.Fatalf("initial cwd = %q, want %q", got[0], home)
+	}
+	if got[1] != filepath.Join(home, "custom") {
+		t.Fatalf("cwd after cd custom = %q, want %q", got[1], filepath.Join(home, "custom"))
 	}
 }

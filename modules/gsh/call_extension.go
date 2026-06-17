@@ -33,18 +33,18 @@ type shellContext struct {
 	envMap   map[string]string
 }
 
-func CallExtension(taskPath, taskName string, env []string, logger robot.Logger, bot BotAPI, args []string) (robot.TaskRetVal, error) {
+func CallExtension(taskPath, taskName, workDir string, env []string, logger robot.Logger, bot BotAPI, args []string) (robot.TaskRetVal, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	ret, err := runScript(taskPath, taskName, env, logger, bot, args, &stdout, &stderr)
+	ret, err := runScript(taskPath, taskName, workDir, env, logger, bot, args, &stdout, &stderr)
 	logBufferedOutput(logger, &stdout, &stderr)
 	return ret, err
 }
 
-func GetPluginConfig(taskPath, taskName string, env []string, logger robot.Logger) (*[]byte, error) {
+func GetPluginConfig(taskPath, taskName, workDir string, env []string, logger robot.Logger) (*[]byte, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	ret, err := runScript(taskPath, taskName, env, logger, nil, []string{"_configure"}, &stdout, &stderr)
+	ret, err := runScript(taskPath, taskName, workDir, env, logger, nil, []string{"_configure"}, &stdout, &stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func GetPluginConfig(taskPath, taskName string, env []string, logger robot.Logge
 	return &out, nil
 }
 
-func runScript(taskPath, taskName string, env []string, logger robot.Logger, bot BotAPI, args []string, stdout, stderr io.Writer) (robot.TaskRetVal, error) {
+func runScript(taskPath, taskName, workDir string, env []string, logger robot.Logger, bot BotAPI, args []string, stdout, stderr io.Writer) (robot.TaskRetVal, error) {
 	shim, err := assets.ReadFile("assets/gopherbot_v1.gsh")
 	if err != nil {
 		return robot.MechanismFail, fmt.Errorf("loading built-in gsh shim: %w", err)
@@ -84,8 +84,12 @@ func runScript(taskPath, taskName string, env []string, logger robot.Logger, bot
 		envMap:   envListToMap(env),
 	}
 
+	if workDir == "" {
+		workDir = "."
+	}
+
 	runner, err := interp.New(
-		interp.Dir(filepath.Dir(taskPath)),
+		interp.Dir(workDir),
 		interp.Env(expand.ListEnviron(env...)),
 		interp.StdIO(nil, stdout, stderr),
 		interp.Params(args...),

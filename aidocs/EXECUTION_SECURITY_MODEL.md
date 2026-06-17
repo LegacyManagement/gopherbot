@@ -100,6 +100,9 @@ Platform mechanics differ:
   - compiled-in extensions are not treated as unprivileged sandboxed code and always run as the invoking robot user
 - External interpreted tasks (`.go` via yaegi, `.lua`, `.js`, `.gsh`) now execute in child RPC processes.
   - The child commits to the parent-selected privsep role before the RPC loop starts.
+  - The child starts in the same working directory that an external executable
+    script would receive for the same task: `Homed: true` uses the robot home
+    directory, otherwise the current pipeline working directory.
   - Parent keeps policy/routing/identity authority and services Robot API calls over RPC.
   - For `.gsh`, shell utilities such as `ls`, `grep`, `jq`, `mktemp`, and `tar` stay inside the child process; only Robot operations cross back to the parent engine over RPC.
   - Parent tracks active RPC child process in `worker.osCmd` and request-cancel hook in `worker.rpcCancel`.

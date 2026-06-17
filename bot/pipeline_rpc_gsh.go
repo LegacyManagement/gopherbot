@@ -12,6 +12,7 @@ import (
 type pipelineRPCGSHRunRequest struct {
 	TaskPath string   `json:"task_path"`
 	TaskName string   `json:"task_name"`
+	WorkDir  string   `json:"work_dir,omitempty"`
 	Env      []string `json:"env"`
 	Args     []string `json:"args"`
 }
@@ -24,6 +25,7 @@ type pipelineRPCGSHRunResponse struct {
 type pipelineRPCGSHGetConfigRequest struct {
 	TaskPath string   `json:"task_path"`
 	TaskName string   `json:"task_name"`
+	WorkDir  string   `json:"work_dir,omitempty"`
 	Env      []string `json:"env"`
 }
 
@@ -32,14 +34,19 @@ type pipelineRPCGSHGetConfigResponse struct {
 	Error  string `json:"error,omitempty"`
 }
 
-func runGSHExtensionViaRPC(taskPath, taskName string, env []string, privileged bool, w *worker, r robot.Robot, args []string) (robot.TaskRetVal, error) {
+func runGSHExtensionViaRPC(taskPath, taskName, workDir string, env []string, privileged bool, w *worker, r robot.Robot, args []string) (robot.TaskRetVal, error) {
+	resolvedWorkDir, err := resolvePipelineRPCWorkDir(workDir)
+	if err != nil {
+		return robot.MechanismFail, err
+	}
 	params := pipelineRPCGSHRunRequest{
 		TaskPath: taskPath,
 		TaskName: taskName,
+		WorkDir:  resolvedWorkDir,
 		Env:      env,
 		Args:     args,
 	}
-	resRaw, err := runPipelineRPCRequestForRole("gsh_run", params, w, r, privsepRoleForExecution(privileged))
+	resRaw, err := runPipelineRPCRequestForRoleInDir("gsh_run", params, w, r, privsepRoleForExecution(privileged), resolvedWorkDir)
 	if err != nil {
 		return robot.MechanismFail, err
 	}
@@ -57,13 +64,18 @@ func runGSHExtensionViaRPC(taskPath, taskName string, env []string, privileged b
 	return robot.TaskRetVal(res.RetVal), nil
 }
 
-func runGSHGetConfigViaRPC(taskPath, taskName string, env []string, privileged bool) (*[]byte, error) {
+func runGSHGetConfigViaRPC(taskPath, taskName, workDir string, env []string, privileged bool) (*[]byte, error) {
+	resolvedWorkDir, err := resolvePipelineRPCWorkDir(workDir)
+	if err != nil {
+		return nil, err
+	}
 	params := pipelineRPCGSHGetConfigRequest{
 		TaskPath: taskPath,
 		TaskName: taskName,
+		WorkDir:  resolvedWorkDir,
 		Env:      env,
 	}
-	resRaw, err := runPipelineRPCRequestForRole("gsh_get_config", params, nil, nil, privsepRoleForExecution(privileged))
+	resRaw, err := runPipelineRPCRequestForRoleInDir("gsh_get_config", params, nil, nil, privsepRoleForExecution(privileged), resolvedWorkDir)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +96,7 @@ func handlePipelineRPCGSHRun(dec *json.Decoder, enc *json.Encoder, msg pipelineR
 		return writePipelineRPCError(enc, msg.ID, "invalid_params", fmt.Sprintf("invalid gsh_run params: %v", err))
 	}
 	client := newPipelineRPCInterpreterRobotClient(dec, enc, map[string]string{})
-	ret, err := gshmod.CallExtension(req.TaskPath, req.TaskName, req.Env, client, client, req.Args)
+	ret, err := gshmod.CallExtension(req.TaskPath, req.TaskName, req.WorkDir, req.Env, client, client, req.Args)
 	res := pipelineRPCGSHRunResponse{RetVal: int(ret)}
 	if err != nil {
 		res.Error = err.Error()
@@ -97,7 +109,7 @@ func handlePipelineRPCGSHGetConfig(enc *json.Encoder, msg pipelineRPCMessage) er
 	if err := json.Unmarshal(msg.Params, &req); err != nil {
 		return writePipelineRPCError(enc, msg.ID, "invalid_params", fmt.Sprintf("invalid gsh_get_config params: %v", err))
 	}
-	cfg, err := gshmod.GetPluginConfig(req.TaskPath, req.TaskName, req.Env, nil)
+	cfg, err := gshmod.GetPluginConfig(req.TaskPath, req.TaskName, req.WorkDir, req.Env, nil)
 	res := pipelineRPCGSHGetConfigResponse{}
 	if err != nil {
 		res.Error = err.Error()
