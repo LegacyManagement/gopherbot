@@ -19,6 +19,8 @@ func TestNewPipelineChildRPCCommand(t *testing.T) {
 	homePath = "/tmp/test-home"
 	installPath = "/tmp/test-install"
 	configFull = "/tmp/test-config"
+	t.Setenv("HOME", "/tmp/parent-home")
+	t.Setenv("PATH", "/tmp/parent-bin:/usr/bin")
 	t.Cleanup(func() {
 		homePath = oldHomePath
 		installPath = oldInstallPath
@@ -37,6 +39,12 @@ func TestNewPipelineChildRPCCommand(t *testing.T) {
 	}
 	if !envContains(cmd.Env, "GOPHER_HOME="+homePath) {
 		t.Fatalf("child rpc env missing GOPHER_HOME=%s: %#v", homePath, cmd.Env)
+	}
+	if !envContains(cmd.Env, "HOME=/tmp/parent-home") {
+		t.Fatalf("child rpc env missing inherited HOME: %#v", cmd.Env)
+	}
+	if !envContains(cmd.Env, "PATH=/tmp/parent-bin:/usr/bin") {
+		t.Fatalf("child rpc env missing inherited PATH: %#v", cmd.Env)
 	}
 
 	roleCmd := newPipelineChildRPCCommandForRole(privsepRolePrivileged)

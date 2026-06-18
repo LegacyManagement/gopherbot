@@ -152,6 +152,12 @@ Thread subscription lifecycle:
 
 External scripts (bash/python/ruby/etc.) call into the robot via JSON POSTs. The HTTP handler in `bot/http.go` dispatches on `FuncName` and `FuncArgs` and enforces the supported call set.
 
+External script environments preserve the parent process `HOME` and `PATH`
+when they are set. Robot-specific locations are exposed separately as
+`GOPHER_HOME`, `GOPHER_CONFIGDIR`, `GOPHER_INSTALLDIR`, and
+`GOPHER_WORKSPACE`. Scripts should use `GOPHER_HOME` when they need the robot
+directory, and leave `HOME`/`PATH` for normal host-tool behavior.
+
 Supported `FuncName` values in `bot/http.go`:
 - `CheckAdmin`, `Subscribe`, `Unsubscribe`
 - `AddTask`, `AddJob`, `FinalTask`, `FailTask`, `SpawnJob`

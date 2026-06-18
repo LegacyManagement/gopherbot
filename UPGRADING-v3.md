@@ -309,6 +309,18 @@ With `SecureParameters: true`:
 - Scripts must call the Gopherbot HTTP JSON API (GetParameter) to retrieve individual
   parameters
 
+### `HOME` and `PATH` preserve the launch environment
+
+File-backed extensions no longer receive `HOME=$GOPHER_HOME` by default.
+Instead, `HOME` and `PATH` are inherited from the parent process environment
+when set, matching normal Unix subprocess behavior.
+
+Use `GOPHER_HOME` for the robot home/root directory. This is the required
+migration for scripts that previously used `$HOME` to find robot-owned files.
+This change makes local development and host tools such as `kubectl`, `git`,
+and cloud CLIs use the same home directory and command path as the process that
+started the robot.
+
 ### Built-in interpreter extensions
 
 | Runtime | Context values | Configured parameters |

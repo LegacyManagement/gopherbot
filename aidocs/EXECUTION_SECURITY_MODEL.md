@@ -116,6 +116,9 @@ Platform mechanics differ:
   - parent starts an internal child runner process (`gopherbot pipeline-child-exec`) with separate process group (`Setpgid: true`).
   - The child commits to the parent-selected privsep role before execing the target script/interpreter.
   - child runner executes exactly one external command, streams stdout/stderr, exits with command status.
+  - external task environments preserve parent `HOME` and `PATH` when present;
+    robot-owned paths remain explicit through `GOPHER_HOME`,
+    `GOPHER_CONFIGDIR`, `GOPHER_INSTALLDIR`, and `GOPHER_WORKSPACE`.
   - parent tracks child pid in `worker.osCmd` for admin `ps`/`kill` and timeout watchdog kill handling.
   - Legacy HTTP/JSON Robot API calls from external executables are serialized
     through the same per-worker `serializeAPICalls` gate used by RPC-backed

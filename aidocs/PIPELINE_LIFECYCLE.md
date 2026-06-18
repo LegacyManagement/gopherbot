@@ -155,6 +155,10 @@ Catch-all mode scoping:
 - File-backed extensions run through child process boundaries:
   - external executables use `pipeline-child-exec`
   - Lua, JavaScript, Gopherbot shell, and interpreted Go use `pipeline-child-rpc`
+- File-backed extension environments preserve parent `HOME` and `PATH` when
+  those values are set. Robot-specific directories are exposed through
+  `GOPHER_HOME`, `GOPHER_CONFIGDIR`, `GOPHER_INSTALLDIR`, and
+  `GOPHER_WORKSPACE`.
 - When privilege separation is active, the parent sets `GOPHER_PRIVSEP_CHILD_ROLE`; the child commits to that role before interpreter or external script code starts.
 - `startPipeline` sets pipeline privilege context (`pipeContext.privileged`) from the starter task: `bot/run_pipelines.go`.
 - Adding privileged work to unprivileged pipelines is blocked in pipeline mutation APIs: `bot/robot_pipecmd.go`.

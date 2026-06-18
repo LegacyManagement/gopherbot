@@ -15,6 +15,7 @@ import (
 )
 
 var envPassThrough = []string{
+	"HOME",
 	"HOSTNAME",
 	"LANG",
 	"PATH",
@@ -629,7 +630,6 @@ func (w *worker) getEnvironment(t interface{}) (env, parameters map[string]strin
 	envhash := make(map[string]string)
 	// These values are always fixed
 	if len(homePath) > 0 {
-		envhash["HOME"] = homePath
 		envhash["GOPHER_HOME"] = homePath
 	}
 	envhash["GOPHER_CONFIGDIR"] = configFull

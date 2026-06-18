@@ -99,6 +99,35 @@ func libPaths() []string {
 	return libPaths
 }
 
+func buildConfigureEnv() []string {
+	configureEnv := []string{
+		fmt.Sprintf("GOPHER_INSTALLDIR=%s", installPath),
+		fmt.Sprintf("GOPHER_HOME=%s", homePath),
+		fmt.Sprintf("RUBYLIB=%s/lib:%s/custom/lib", installPath, homePath),
+		fmt.Sprintf("GEM_HOME=%s/.local", homePath),
+		// empty entry at the end for JULIA, see: https://docs.julialang.org/en/v1/manual/environment-variables/
+		fmt.Sprintf("JULIA_LOAD_PATH=%s/lib:%s/custom/lib:", installPath, homePath),
+		fmt.Sprintf("PYTHONPATH=%s/lib:%s/custom/lib", installPath, homePath),
+		fmt.Sprintf("GOPHER_CONFIGDIR=%s", configFull),
+	}
+	exists := make(map[string]struct{}, len(configureEnv))
+	for _, item := range configureEnv {
+		key, _, ok := strings.Cut(item, "=")
+		if ok && key != "" {
+			exists[key] = struct{}{}
+		}
+	}
+	for _, p := range envPassThrough {
+		if _, ok := exists[p]; ok {
+			continue
+		}
+		if value, ok := lookupEnv(p); ok {
+			configureEnv = append(configureEnv, fmt.Sprintf("%s=%s", p, value))
+		}
+	}
+	return configureEnv
+}
+
 // Path to the Gopherbot executable
 func execPath() string {
 	return filepath.Join(installPath, "gopherbot")
@@ -151,21 +180,7 @@ func getDefCfgThread(cchan chan<- getCfgReturn, ti interface{}) {
 	isExternalJSTask := strings.HasSuffix(task.Path, ".js")
 	isExternalGSHTask := strings.HasSuffix(task.Path, ".gsh")
 	isExternalInterpreterTask := isExternalGoTask || isExternalLuaTask || isExternalJSTask || isExternalGSHTask
-	configureEnv := []string{
-		fmt.Sprintf("GOPHER_INSTALLDIR=%s", installPath),
-		fmt.Sprintf("RUBYLIB=%s/lib:%s/custom/lib", installPath, homePath),
-		fmt.Sprintf("GEM_HOME=%s/.local", homePath),
-		// empty entry at the end for JULIA, see: https://docs.julialang.org/en/v1/manual/environment-variables/
-		fmt.Sprintf("JULIA_LOAD_PATH=%s/lib:%s/custom/lib:", installPath, homePath),
-		fmt.Sprintf("PYTHONPATH=%s/lib:%s/custom/lib", installPath, homePath),
-		fmt.Sprintf("GOPHER_CONFIGDIR=%s", configFull),
-		fmt.Sprintf("HOME=%s", homePath),
-	}
-	for _, p := range envPassThrough {
-		if value, ok := lookupEnv(p); ok {
-			configureEnv = append(configureEnv, fmt.Sprintf("%s=%s", p, value))
-		}
-	}
+	configureEnv := buildConfigureEnv()
 	configureWorkDir, wdErr := os.Getwd()
 	if wdErr != nil {
 		configureWorkDir = "."

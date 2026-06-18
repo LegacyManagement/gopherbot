@@ -221,7 +221,8 @@ ScheduledJobs:
 ## NOTE:
 ## External script jobs/tasks/plugins do NOT have direct access to
 ## environment variables, but instead get a combination of:
-## - vars explicitly propagated such as $HOME
+## - inherited launch environment values such as $HOME and $PATH
+## - robot context values such as $GOPHER_HOME
 ## - vars defined in "Parameters" (see below)
 
 ExternalPlugins:

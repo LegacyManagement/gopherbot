@@ -76,6 +76,18 @@ working-directory behavior. `Homed: true` starts execution in the robot home
 directory; otherwise execution starts in the current pipeline working
 directory, including changes made through `SetWorkingDirectory`.
 
+Environment behavior is intentionally split between host/user values and robot
+values:
+
+- `HOME` and `PATH` are inherited from the parent process environment when set.
+- `GOPHER_HOME` is the robot home/root directory.
+- `GOPHER_CONFIGDIR`, `GOPHER_INSTALLDIR`, `GOPHER_WORKSPACE`, and other
+  `GOPHER_*` values describe robot runtime context.
+
+Extension authors should use normal `HOME`/`PATH` semantics for host tools such
+as `kubectl`, `git`, and cloud CLIs, and use `GOPHER_HOME` when they mean the
+robot directory.
+
 ## Plugin Contract by Language
 
 Config key note: in v3 plugin config, directed command matchers must be under `Commands`. Legacy `CommandMatchers` and top-level `Help` are no longer accepted.
