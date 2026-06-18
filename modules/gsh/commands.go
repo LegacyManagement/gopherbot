@@ -1497,6 +1497,23 @@ func parseCountFlag(args []string, def int) (int, []string, error) {
 		}
 		return n, args[2:], nil
 	}
+	if len(args) >= 1 && len(args[0]) > 1 && strings.HasPrefix(args[0], "-") {
+		shorthand := args[0][1:]
+		allDigits := true
+		for _, r := range shorthand {
+			if r < '0' || r > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			n, err := strconv.Atoi(shorthand)
+			if err != nil {
+				return 0, nil, fmt.Errorf("invalid count value")
+			}
+			return n, args[1:], nil
+		}
+	}
 	return def, args, nil
 }
 

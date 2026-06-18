@@ -72,6 +72,46 @@ printf 'head=%s tail=%s lines=%s decode=%s jq=%s uniq=%s\n' "$head_line" "$tail_
 	}
 }
 
+func TestRunScriptTailShorthandReadsPipedExternalOutput(t *testing.T) {
+	tmp := t.TempDir()
+	writeTempScript(t, tmp, "emit-lines", `#!/bin/sh
+printf 'one\n'
+printf 'two\n'
+printf 'three\n'
+`)
+	script := writeTempScript(t, tmp, "tail-shorthand.gsh", `#!/bin/sh
+output=$(emit-lines | tail -1)
+printf 'last=%s\n' "$output"
+`)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	ret, err := runScript(
+		script,
+		"tail-shorthand-test",
+		tmp,
+		[]string{
+			"PATH=" + tmp + string(os.PathListSeparator) + os.Getenv("PATH"),
+			"GOPHER_INSTALLDIR=" + tmp,
+		},
+		nil,
+		nil,
+		nil,
+		&stdout,
+		&stderr,
+	)
+	if err != nil {
+		t.Fatalf("runScript() error = %v; stderr=%q", err, stderr.String())
+	}
+	if ret != robot.Normal {
+		t.Fatalf("runScript() ret = %v, want %v; stderr=%q", ret, robot.Normal, stderr.String())
+	}
+	got := strings.TrimSpace(stdout.String())
+	if got != "last=three" {
+		t.Fatalf("tail shorthand output = %q, want %q; stderr=%q", got, "last=three", stderr.String())
+	}
+}
+
 func TestRunScriptUsesWorkDirInsteadOfScriptDir(t *testing.T) {
 	home := t.TempDir()
 	scriptDir := filepath.Join(home, "jobs")

@@ -198,6 +198,7 @@ Gopherbot shell uses `modules/gsh/assets/gopherbot_v1.gsh` as a compatibility sh
 
 - Robot methods are exposed as shell builtins (`say`, `Reply`, `PromptForReply`, `CheckAdmin`, `AddTask`, `GetTaskConfig`, etc.).
 - Common utility commands are also builtin (`base64`, `cat`, `cp`, `find`, `grep`, `jq`, `ls`, `mktemp`, `mv`, `rm`, `sort`, `tar`, `touch`, `tr`, `uniq`, `wc`, `xargs`, and related helpers).
+- Builtin `head` and `tail` accept both `-n <count>` and shell-compatible shorthand count flags like `-1`.
 - `say` / `Say` style variants are equivalent because command lookup normalizes case plus `-` / `_`.
 - `Log` accepts numeric `LogLevel` values and named levels (`Trace`, `Debug`, `Info`, `Audit`, `Warn`/`Warning`, `Error`), so `Log Audit "Something happened"` works when migrating external bash scripts to `.gsh`; numeric `6` is the explicit `Fatal` form.
 - `.gsh` does not use `bot/http.go`; Robot methods traverse the internal pipeline RPC robot bridge instead.
