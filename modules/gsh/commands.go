@@ -550,16 +550,33 @@ func (c *shellContext) cmdGetUserAttribute(ctx context.Context, args []string) e
 
 func (c *shellContext) cmdLog(ctx context.Context, args []string) error {
 	if len(args) < 2 {
-		return usageError(ctx, "Log requires a numeric level and message")
+		return usageError(ctx, "Log requires a level and message")
 	}
-	level, err := strconv.Atoi(args[0])
-	if err != nil {
-		return usageError(ctx, "Log requires a numeric level")
-	}
+	level := parseLogLevel(args[0])
 	if c.bot.Log(robot.LogLevel(level), strings.Join(args[1:], " ")) {
 		return nil
 	}
 	return interp.ExitStatus(1)
+}
+
+func parseLogLevel(level string) robot.LogLevel {
+	if numeric, err := strconv.Atoi(level); err == nil {
+		return robot.LogLevel(numeric)
+	}
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "trace":
+		return robot.Trace
+	case "debug":
+		return robot.Debug
+	case "info":
+		return robot.Info
+	case "audit":
+		return robot.Audit
+	case "warn", "warning":
+		return robot.Warn
+	default:
+		return robot.Error
+	}
 }
 
 func (c *shellContext) cmdGetTaskConfig(ctx context.Context, args []string) error {

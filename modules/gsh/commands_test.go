@@ -125,3 +125,29 @@ pwd >> "$OUT_PATH"
 		t.Fatalf("cwd after cd custom = %q, want %q", got[1], filepath.Join(home, "custom"))
 	}
 }
+
+func TestParseLogLevelSupportsNumericAndNamedLevels(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  robot.LogLevel
+	}{
+		{name: "numeric audit", input: "3", want: robot.Audit},
+		{name: "named trace", input: "Trace", want: robot.Trace},
+		{name: "named debug lower", input: "debug", want: robot.Debug},
+		{name: "named info", input: "Info", want: robot.Info},
+		{name: "named audit", input: "Audit", want: robot.Audit},
+		{name: "named warn", input: "Warn", want: robot.Warn},
+		{name: "named warning", input: "Warning", want: robot.Warn},
+		{name: "named error", input: "Error", want: robot.Error},
+		{name: "named fatal matches external shell behavior", input: "Fatal", want: robot.Error},
+		{name: "unknown matches external shell behavior", input: "NoSuchLevel", want: robot.Error},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := parseLogLevel(tt.input); got != tt.want {
+				t.Fatalf("parseLogLevel(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}

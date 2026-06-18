@@ -257,6 +257,7 @@ esac
 **Key points:**
 - `$1` is the command (`_configure`, `_init`, or the configured command name).
 - Robot methods such as `say`, `Reply`, `PromptForReply`, `AddTask`, and `GetTaskConfig` are builtin shell commands, not HTTP wrappers.
+- `Log` accepts either numeric levels (`0` Trace, `1` Debug, `2` Info, `3` Audit, `4` Warn, `5` Error, `6` Fatal) or named levels such as `Log Audit "Something happened"`; unknown named levels, including `Fatal`, log as `Error` for compatibility with external bash scripts.
 - Common shell utilities are also builtin (`cat`, `cp`, `find`, `grep`, `jq`, `ls`, `mktemp`, `mv`, `sort`, `tar`, `touch`, `tr`, `uniq`, `wc`, `xargs`, and more).
 - Command lookup is case-insensitive across Robot builtins, so `say` and `Say` are equivalent.
 - Maintained engine-shipped script defaults now prefer `.gsh` entrypoints (for example `plugins/admin.gsh`, `tasks/status.gsh`, and `tasks/notify.gsh`) while legacy `.sh` examples remain in-tree for compatibility/reference.
