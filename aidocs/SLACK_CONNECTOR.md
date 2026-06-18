@@ -71,7 +71,10 @@ This file captures Slack connector behavior relevant to routing, private slash c
   - `@username` mention tokens are still resolved against connector user maps when unambiguous and rewritten to Slack user mention tokens (`<@U...>`).
   - Targeted `BasicMarkdown` replies still add their live mention prefix before send.
   - Mention parsing is skipped inside inline code and fenced code blocks.
-  - Escapes, shortcode emoji, Unicode emoji, quotes, lists, and markdown links are passed through in their original BasicMarkdown form.
+  - Slack-native shortcode emoji are passed through by exact shortcode name using a local whitelist generated from `iamcal/emoji-data` `emoji.json`, so Slack renders them natively.
+  - Shortcode emoji not in Slack's native whitelist are expanded to Unicode through the shared internal emoji map when known; unknown shortcodes remain literal.
+  - Emoji shortcode expansion/pass-through is skipped inside inline code and fenced code blocks.
+  - Escapes, Unicode emoji, quotes, lists, and markdown links are otherwise passed through in their original BasicMarkdown form.
   - Long `BasicMarkdown` sends currently chunk at a conservative application limit of 11,500 characters, below Slack's documented `markdown_text` maximum of 12,000 characters.
   - If Web API send falls back to legacy RTM send, the connector still derives a legacy-formatted fallback text for that chunk.
 

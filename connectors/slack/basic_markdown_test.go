@@ -24,9 +24,9 @@ func TestRenderBasicMarkdownCodeBoundaries(t *testing.T) {
 		},
 	}
 
-	in := "inline `@alice` and block:\n```text\n@alice :white_check_mark:\n```\noutside @alice"
+	in := "inline `@alice :albania:` and block:\n```text\n@alice :white_check_mark: :albania:\n```\noutside @alice :albania:"
 	got := s.renderBasicMarkdown(in)
-	want := "inline `@alice` and block:\n```\n@alice :white_check_mark:\n```\noutside <@U111>"
+	want := "inline `@alice :albania:` and block:\n```\n@alice :white_check_mark: :albania:\n```\noutside <@U111> 🇦🇱"
 	if got != want {
 		t.Fatalf("renderBasicMarkdown() = %q, want %q", got, want)
 	}
@@ -39,9 +39,9 @@ func TestRenderBasicMarkdownLinksAndEscapes(t *testing.T) {
 		},
 	}
 
-	in := "See [runbook](https://example.com/runbook) and \\[literal\\](https://example.com) and \\@alice"
+	in := "See [runbook :albania:](https://example.com/runbook) and \\[literal\\](https://example.com) and \\@alice"
 	got := s.renderBasicMarkdown(in)
-	want := "See <https://example.com/runbook|runbook> and [literal](https://example.com) and @alice"
+	want := "See <https://example.com/runbook|runbook 🇦🇱> and [literal](https://example.com) and @alice"
 	if got != want {
 		t.Fatalf("renderBasicMarkdown() = %q, want %q", got, want)
 	}
@@ -49,10 +49,21 @@ func TestRenderBasicMarkdownLinksAndEscapes(t *testing.T) {
 
 func TestRenderBasicMarkdownEmojiPassThrough(t *testing.T) {
 	s := &slackConnector{}
-	in := "Build passed :white_check_mark: 😂"
+	in := "Build passed :white_check_mark: :albania: :not_a_real_emoji: 😂"
 	got := s.renderBasicMarkdown(in)
-	if got != in {
-		t.Fatalf("renderBasicMarkdown() = %q, want %q", got, in)
+	want := "Build passed :white_check_mark: 🇦🇱 :not_a_real_emoji: 😂"
+	if got != want {
+		t.Fatalf("renderBasicMarkdown() = %q, want %q", got, want)
+	}
+}
+
+func TestRenderBasicMarkdownEmojiSlackAliasesPassThrough(t *testing.T) {
+	s := &slackConnector{}
+	in := "Flags: :flag-al: :albania: reactions: :+1: :thumbsup:"
+	got := s.renderBasicMarkdown(in)
+	want := "Flags: :flag-al: 🇦🇱 reactions: :+1: :thumbsup:"
+	if got != want {
+		t.Fatalf("renderBasicMarkdown() = %q, want %q", got, want)
 	}
 }
 
@@ -160,9 +171,9 @@ func TestRenderBasicMarkdownMarkdownTextPreservesEscapesAndCodeFences(t *testing
 		},
 	}
 
-	in := "Escaped \\@alice and `@alice`\n```text\n@alice\n```\noutside @alice"
+	in := "Escaped \\@alice and `@alice :albania:`\n```text\n@alice :albania:\n```\noutside @alice :albania: :white_check_mark:"
 	got := s.renderBasicMarkdownMarkdownText(in)
-	want := "Escaped \\@alice and `@alice`\n```text\n@alice\n```\noutside <@U111>"
+	want := "Escaped \\@alice and `@alice :albania:`\n```text\n@alice :albania:\n```\noutside <@U111> 🇦🇱 :white_check_mark:"
 	if got != want {
 		t.Fatalf("renderBasicMarkdownMarkdownText() = %q, want %q", got, want)
 	}

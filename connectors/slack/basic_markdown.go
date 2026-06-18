@@ -3,6 +3,8 @@ package slack
 import (
 	"fmt"
 	"strings"
+
+	"github.com/lnxjedi/gopherbot/robot/util"
 )
 
 var slackPlainEscapeReplacer = strings.NewReplacer(
@@ -110,14 +112,14 @@ func (s *slackConnector) renderBasicMarkdownMarkdownTextInline(msg string) strin
 	for len(msg) > 0 {
 		start := findNextUnescapedBacktick(msg, 0)
 		if start == -1 {
-			out.WriteString(s.replaceBasicMarkdownMentionsMarkdownText(msg))
+			out.WriteString(replaceSlackBasicMarkdownEmoji(s.replaceBasicMarkdownMentionsMarkdownText(msg)))
 			break
 		}
-		out.WriteString(s.replaceBasicMarkdownMentionsMarkdownText(msg[:start]))
+		out.WriteString(replaceSlackBasicMarkdownEmoji(s.replaceBasicMarkdownMentionsMarkdownText(msg[:start])))
 
 		end := findNextUnescapedBacktick(msg, start+1)
 		if end == -1 {
-			out.WriteString(s.replaceBasicMarkdownMentionsMarkdownText(msg[start:]))
+			out.WriteString(replaceSlackBasicMarkdownEmoji(s.replaceBasicMarkdownMentionsMarkdownText(msg[start:])))
 			break
 		}
 		out.WriteString(msg[start : end+1])
@@ -157,12 +159,84 @@ func (s *slackConnector) renderBasicMarkdownPlain(msg string) string {
 
 	msg = replaceBasicMarkdownLinks(msg, reserveMD)
 	msg = s.replaceBasicMarkdownMentions(msg, reserveMD)
+	msg = replaceSlackBasicMarkdownEmoji(msg)
 	msg = replaceBasicMarkdownEmphasis(msg, reserveMD)
 	msg = slackPlainEscapeReplacer.Replace(msg)
 	msg = restoreEscapedLiterals(msg, escapedLiterals)
 	msg = restoreMarkdownPlaceholders(msg, mdTokens)
 
 	return msg
+}
+
+func replaceSlackBasicMarkdownEmoji(msg string) string {
+	var out strings.Builder
+	for i := 0; i < len(msg); {
+		if msg[i] != ':' {
+			out.WriteByte(msg[i])
+			i++
+			continue
+		}
+
+		end := findBasicMarkdownEmojiEnd(msg, i)
+		if end == -1 {
+			out.WriteByte(msg[i])
+			i++
+			continue
+		}
+
+		name := msg[i+1 : end]
+		if _, ok := slackSupportedEmojiShortcodes[name]; ok {
+			out.WriteString(msg[i : end+1])
+		} else if emoji := util.EmojiUnicode(name); emoji != "" {
+			out.WriteString(emoji)
+		} else {
+			out.WriteString(msg[i : end+1])
+		}
+		i = end + 1
+	}
+	return out.String()
+}
+
+func findBasicMarkdownEmojiEnd(msg string, start int) int {
+	if start < 0 || start >= len(msg) || msg[start] != ':' {
+		return -1
+	}
+	if start > 0 && isBasicMarkdownEmojiNameChar(msg[start-1]) {
+		return -1
+	}
+	nameStart := start + 1
+	if nameStart >= len(msg) || !isBasicMarkdownEmojiNameChar(msg[nameStart]) {
+		return -1
+	}
+	for i := nameStart; i < len(msg); i++ {
+		switch {
+		case msg[i] == ':':
+			if i+1 < len(msg) && isBasicMarkdownEmojiNameChar(msg[i+1]) {
+				return -1
+			}
+			return i
+		case isBasicMarkdownEmojiNameChar(msg[i]):
+			continue
+		default:
+			return -1
+		}
+	}
+	return -1
+}
+
+func isBasicMarkdownEmojiNameChar(ch byte) bool {
+	switch {
+	case ch >= 'a' && ch <= 'z':
+		return true
+	case ch >= 'A' && ch <= 'Z':
+		return true
+	case ch >= '0' && ch <= '9':
+		return true
+	case ch == '_' || ch == '+' || ch == '-':
+		return true
+	default:
+		return false
+	}
 }
 
 func replaceBasicMarkdownEmphasis(msg string, reserveMD func(string) string) string {
@@ -309,7 +383,7 @@ func replaceBasicMarkdownLinks(msg string, reserveMD func(string) string) string
 		}
 		end += close + 2
 
-		label := msg[open+1 : close]
+		label := replaceSlackBasicMarkdownEmoji(msg[open+1 : close])
 		url := msg[close+2 : end]
 		if !isBasicMarkdownLinkURL(url) {
 			out.WriteString(msg[open : end+1])
