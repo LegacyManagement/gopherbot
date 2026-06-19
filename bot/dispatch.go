@@ -258,6 +258,13 @@ func (w *worker) checkWrongLocationCommandMatch() bool {
 	return true
 }
 
+func (w *worker) shouldCheckThreadSubscription(messageMatched, catchAllMatched bool) bool {
+	if messageMatched || w.Incoming.SelfMessage || w.BotUser {
+		return false
+	}
+	return (w.isCommand && !catchAllMatched) || !w.isCommand
+}
+
 // handleMessage checks the message against plugin commands and full-message
 // matches, then dispatches it to the applicable plugin. If the robot was
 // addressed directly but nothing matched, any registered CatchAll plugins are
@@ -423,7 +430,7 @@ func (w *worker) handleMessage() {
 		}
 	}
 	// Last of all, check for thread subscriptions
-	if !messageMatched && !w.Incoming.SelfMessage && (w.isCommand && !catchAllMatched || !w.isCommand) {
+	if w.shouldCheckThreadSubscription(messageMatched, catchAllMatched) {
 		subscriptions.Lock()
 		subscriptionSpec, subscription, ok := lookupSubscriptionLocked(incomingProtocol, w.Channel, w.Incoming.ThreadID)
 		if ok {

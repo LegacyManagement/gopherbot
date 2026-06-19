@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/lnxjedi/gopherbot/robot"
 )
 
 func TestSubscriptionsUnmarshalLegacyKeyFormat(t *testing.T) {
@@ -83,6 +85,71 @@ func TestLookupSubscriptionLockedPrefersProtocol(t *testing.T) {
 	}
 	if key.protocol != "" || sub.Plugin != "legacy-plug" {
 		t.Fatalf("lookupSubscriptionLocked(ssh) = key:%#v sub:%#v, want legacy fallback", key, sub)
+	}
+}
+
+func TestShouldCheckThreadSubscriptionSkipsBotUsers(t *testing.T) {
+	tests := []struct {
+		name            string
+		worker          worker
+		messageMatched  bool
+		catchAllMatched bool
+		want            bool
+	}{
+		{
+			name: "ambient human message checks subscriptions",
+			worker: worker{
+				Incoming: &robot.ConnectorMessage{},
+			},
+			want: true,
+		},
+		{
+			name: "ambient bot user message skips subscriptions",
+			worker: worker{
+				BotUser:  true,
+				Incoming: &robot.ConnectorMessage{},
+			},
+			want: false,
+		},
+		{
+			name: "self message skips subscriptions",
+			worker: worker{
+				Incoming: &robot.ConnectorMessage{SelfMessage: true},
+			},
+			want: false,
+		},
+		{
+			name: "matched message skips subscriptions",
+			worker: worker{
+				Incoming: &robot.ConnectorMessage{},
+			},
+			messageMatched: true,
+			want:           false,
+		},
+		{
+			name: "unmatched directed command checks subscriptions",
+			worker: worker{
+				isCommand: true,
+				Incoming:  &robot.ConnectorMessage{},
+			},
+			want: true,
+		},
+		{
+			name: "catchall handled directed command skips subscriptions",
+			worker: worker{
+				isCommand: true,
+				Incoming:  &robot.ConnectorMessage{},
+			},
+			catchAllMatched: true,
+			want:            false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.worker.shouldCheckThreadSubscription(tt.messageMatched, tt.catchAllMatched); got != tt.want {
+				t.Fatalf("shouldCheckThreadSubscription() = %t, want %t", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -87,6 +87,14 @@ Catch-all mode scoping:
   - This enables a pattern where a robot emits a formatted message and then reacts to that same message via a trigger job (for example, to capture a started thread ID from `GOPHER_START_THREAD_ID`).
 - Practical implication: if you need plugin `MessageMatchers` to react, do not mark the inbound event as `SelfMessage=true`; if you need trigger-job reaction, `SelfMessage=true` is compatible.
 
+## BotUser Routing Nuance
+
+- `UserRoster` entries may set `BotUser: true` for other automation accounts.
+- `BotUser` is resolved by canonical username in `bot/handler.go:IncomingMessage`.
+- Bot users are excluded from ambient `MessageMatchers`, catch-alls, wrong-location diagnostics, and thread subscription delivery in `bot/dispatch.go:handleMessage`.
+- Job triggers are still checked for bot users in `bot/jobrun.go:checkJobMatchersAndRun`.
+- Directed plugin commands remain allowed for bot users when a message explicitly addresses the robot; this is an existing exception in `bot/dispatch.go:handleMessage`.
+
 ## Prompt Waiter Lifecycle (Prompt* APIs)
 
 - Prompt waiters are keyed by `protocol/user/channel/thread` and checked before command/message matcher routing: `bot/dispatch.go:handleMessage`, `bot/replyprompt.go`.
