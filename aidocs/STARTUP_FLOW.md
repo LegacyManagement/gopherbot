@@ -9,7 +9,7 @@ Startup proceeds through the following phases **in order**:
 1. **CLI parsing** – Process command-line flags
 2. **Early CLI help/dispatch** – Handle root help, subcommand help, internal child commands, and obvious no-init CLI commands
 3. **Initial mode probe** – Evaluate startup mode for early IDE working-directory behavior
-4. **Private environment load** – Load `private/environment` or `.env` when present
+4. **Private environment load** – Load `private/environment` or `.env` when present, preserving already-set process environment values
 5. **Effective mode detection** – Re-evaluate startup mode using process env plus loaded private env
 6. **Encryption initialization** – Set up brain encryption
 7. **Pre-connect configuration load** – Load basic configuration without running scripts
@@ -60,6 +60,13 @@ CLI note:
 - `--aidev <token>` enables AI development mode for the process (used by MCP automation flows).
 - `gopherbot -h`, `gopherbot help <command>`, and `gopherbot <command> -h` are handled before `initBot()`.
 - No-init CLI commands such as `help`, `version`, and `init` also exit before config/brain startup.
+
+Private environment precedence note:
+
+- `private/environment` or `.env` supplies missing process environment values.
+- Values already present in the launching process environment take precedence over the private env file.
+- This means an invocation such as `GOPHER_ENVIRONMENT=development gopherbot ...` overrides `GOPHER_ENVIRONMENT` from `.env` for that process.
+- The private env file is still loaded before effective startup-mode detection, encryption initialization, and config template expansion.
 
 Internal child-runner note:
 

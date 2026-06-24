@@ -205,7 +205,7 @@ func Start(v VersionInfo) {
 			envFile = ef
 		}
 	}
-	penvErr := godotenv.Overload(envFile)
+	penvErr := loadPrivateEnvironment(envFile)
 	// Re-evaluate startup mode after private environment loading so
 	// bootstrap decisions include values from process env or .env.
 	startMode = detectStartupMode()
@@ -354,6 +354,10 @@ func Start(v VersionInfo) {
 			}
 		}()
 	}
+}
+
+func loadPrivateEnvironment(envFile string) error {
+	return godotenv.Load(envFile)
 }
 
 func resolveInstallPath(executable string) (string, error) {

@@ -272,6 +272,22 @@ For non-critical pilot robots before tagging 2.9.0:
 During the 2.9.0 pilot window, prefer bugfixes and UX fixes only. Avoid new
 configuration-breaking changes unless a pilot uncovers a critical defect.
 
+## 2026-06-24 Private Environment Precedence
+
+Startup now treats `.env` and `private/environment` as private defaults. Values
+already present in the launching process environment take precedence over values
+from the private env file.
+
+For example:
+
+```bash
+GOPHER_ENVIRONMENT=development gopherbot validate
+```
+
+uses `development` even if `.env` contains `GOPHER_ENVIRONMENT=production`.
+Operators who relied on `.env` forcibly replacing exported shell variables
+should unset those shell variables before startup.
+
 ## 2026-05-21 Thread Subscription Lifecycle Commands
 
 Thread subscription callbacks now use engine-reserved command names:
