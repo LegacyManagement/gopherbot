@@ -119,6 +119,16 @@ Platform mechanics differ:
   - external task environments preserve parent `HOME` and `PATH` when present;
     robot-owned paths remain explicit through `GOPHER_HOME`,
     `GOPHER_CONFIGDIR`, `GOPHER_INSTALLDIR`, and `GOPHER_WORKSPACE`.
+  - Ruby external task environments set `GEM_HOME` and `GEM_PATH` to
+    `$GOPHER_HOME/.bot-gems`. This is the robot-managed Ruby dependency cache,
+    distinct from general user-local state such as `$GOPHER_HOME/.local`.
+    The shipped `install-libs` job installs Bundler gems there and normalizes
+    dependency-code permissions so unprivileged privsep children can load them
+    without making the broader robot home readable.
+  - Python external task environments set `PYTHONUSERBASE` to
+    `$GOPHER_HOME/.bot-python`. The shipped `install-libs` job installs
+    `requirements.txt` dependencies there with `pip install --user` and
+    normalizes dependency-code permissions for unprivileged privsep children.
   - parent tracks child pid in `worker.osCmd` for admin `ps`/`kill` and timeout watchdog kill handling.
   - Legacy HTTP/JSON Robot API calls from external executables are serialized
     through the same per-worker `serializeAPICalls` gate used by RPC-backed

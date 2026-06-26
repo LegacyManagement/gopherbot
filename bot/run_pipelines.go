@@ -661,8 +661,11 @@ func (w *worker) getEnvironment(t interface{}) (env, parameters map[string]strin
 	envhash["RUBYLIB"] = libPath
 	// empty entry at the end for JULIA, see: https://docs.julialang.org/en/v1/manual/environment-variables/
 	envhash["JULIA_LOAD_PATH"] = fmt.Sprintf("%s/lib:%s/lib:", installPath, configFull)
-	envhash["GEM_HOME"] = fmt.Sprintf("%s/.local", homePath)
+	gemHome := filepath.Join(homePath, ".bot-gems")
+	envhash["GEM_HOME"] = gemHome
+	envhash["GEM_PATH"] = gemHome
 	envhash["PYTHONPATH"] = libPath
+	envhash["PYTHONUSERBASE"] = filepath.Join(homePath, ".bot-python")
 	envhash["GOPHER_ENVIRONMENT"] = getEnv("GOPHER_ENVIRONMENT")
 	envhash["GOPHER_BRAIN"] = w.cfg.brainProvider
 

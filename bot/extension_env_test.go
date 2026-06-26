@@ -51,6 +51,15 @@ func TestGetEnvironmentPreservesParentHomeAndPath(t *testing.T) {
 	if got := env["GOPHER_HOME"]; got != "/robot/home" {
 		t.Fatalf("GOPHER_HOME = %q, want robot home", got)
 	}
+	if got := env["GEM_HOME"]; got != "/robot/home/.bot-gems" {
+		t.Fatalf("GEM_HOME = %q, want robot-managed gem cache", got)
+	}
+	if got := env["GEM_PATH"]; got != "/robot/home/.bot-gems" {
+		t.Fatalf("GEM_PATH = %q, want robot-managed gem cache", got)
+	}
+	if got := env["PYTHONUSERBASE"]; got != "/robot/home/.bot-python" {
+		t.Fatalf("PYTHONUSERBASE = %q, want robot-managed python cache", got)
+	}
 }
 
 func TestBuildConfigureEnvPreservesParentHomeAndPath(t *testing.T) {
@@ -77,5 +86,14 @@ func TestBuildConfigureEnvPreservesParentHomeAndPath(t *testing.T) {
 	}
 	if got, ok := envValue(env, "GOPHER_HOME"); !ok || got != "/robot/home" {
 		t.Fatalf("GOPHER_HOME = %q, present=%v; want robot home", got, ok)
+	}
+	if got, ok := envValue(env, "GEM_HOME"); !ok || got != "/robot/home/.bot-gems" {
+		t.Fatalf("GEM_HOME = %q, present=%v; want robot-managed gem cache", got, ok)
+	}
+	if got, ok := envValue(env, "GEM_PATH"); !ok || got != "/robot/home/.bot-gems" {
+		t.Fatalf("GEM_PATH = %q, present=%v; want robot-managed gem cache", got, ok)
+	}
+	if got, ok := envValue(env, "PYTHONUSERBASE"); !ok || got != "/robot/home/.bot-python" {
+		t.Fatalf("PYTHONUSERBASE = %q, present=%v; want robot-managed python cache", got, ok)
 	}
 }

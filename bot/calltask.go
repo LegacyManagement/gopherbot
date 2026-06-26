@@ -100,14 +100,18 @@ func libPaths() []string {
 }
 
 func buildConfigureEnv() []string {
+	gemHome := filepath.Join(homePath, ".bot-gems")
+	pythonUserBase := filepath.Join(homePath, ".bot-python")
 	configureEnv := []string{
 		fmt.Sprintf("GOPHER_INSTALLDIR=%s", installPath),
 		fmt.Sprintf("GOPHER_HOME=%s", homePath),
 		fmt.Sprintf("RUBYLIB=%s/lib:%s/custom/lib", installPath, homePath),
-		fmt.Sprintf("GEM_HOME=%s/.local", homePath),
+		fmt.Sprintf("GEM_HOME=%s", gemHome),
+		fmt.Sprintf("GEM_PATH=%s", gemHome),
 		// empty entry at the end for JULIA, see: https://docs.julialang.org/en/v1/manual/environment-variables/
 		fmt.Sprintf("JULIA_LOAD_PATH=%s/lib:%s/custom/lib:", installPath, homePath),
 		fmt.Sprintf("PYTHONPATH=%s/lib:%s/custom/lib", installPath, homePath),
+		fmt.Sprintf("PYTHONUSERBASE=%s", pythonUserBase),
 		fmt.Sprintf("GOPHER_CONFIGDIR=%s", configFull),
 	}
 	exists := make(map[string]struct{}, len(configureEnv))
