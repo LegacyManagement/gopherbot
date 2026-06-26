@@ -122,6 +122,7 @@ func (w *worker) deregister() {
 	eid := w.eid
 	w.active = false
 	w.Unlock()
+	deregisterExternalAPICaller(eid)
 	activePipelines.Lock()
 	delete(activePipelines.i, id)
 	delete(activePipelines.eids, eid)

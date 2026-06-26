@@ -46,6 +46,8 @@ ExternalPlugins:
   "pyencryptpriv":
     Path: plugins/test/pyencrypt.py
     Privileged: true
+  "pypipeline":
+    Path: plugins/test/pipeline_py.py
   "rubydemo":
     Path: plugins/samples/rubydemo.rb
   "rbencrypt":
@@ -53,6 +55,8 @@ ExternalPlugins:
   "rbencryptpriv":
     Path: plugins/test/rbencrypt.rb
     Privileged: true
+  "rbpipeline":
+    Path: plugins/test/pipeline_rb.rb
   "echo":
     Path: plugins/samples/echo.sh
   "test":
@@ -71,6 +75,11 @@ ExternalPlugins:
     Path: plugins/private_rules.sh
   "private-locked":
     Path: plugins/private_rules.sh
+ExternalTasks:
+  "python-pipeline-task":
+    Path: plugins/test/pipeline_py.py
+  "ruby-pipeline-task":
+    Path: plugins/test/pipeline_rb.rb
 
 WorkSpace: workspace
 

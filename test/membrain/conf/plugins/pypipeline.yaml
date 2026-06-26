@@ -1,0 +1,7 @@
+---
+AllChannels: true
+AllowedPrivateCommands:
+- "*"
+Commands:
+- SimpleMatcher: python-pipeline
+  Command: pipeline

@@ -123,6 +123,9 @@ Platform mechanics differ:
   - Legacy HTTP/JSON Robot API calls from external executables are serialized
     through the same per-worker `serializeAPICalls` gate used by RPC-backed
     children.
+  - `GOPHER_CALLER_ID` is a pipeline-scoped external API token. The parent
+    refreshes its mapped Robot context for each external executable task, and
+    removes the token only when the pipeline deregisters.
 
 `getDefCfgThread` (plugin configure/default-config path) routes file-backed configure calls through the same child process boundary.
 

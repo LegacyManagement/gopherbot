@@ -300,9 +300,13 @@ func externalCommandRunsPrivileged(pipelinePrivileged bool, plugin *Plugin) bool
 	return plugin == nil || plugin.Privileged
 }
 
-// Maps populated by callTaskThread, so external tasks can get their Robot
-// from the eid (GOPHER_CALLER_ID), and Go tasks can get a handle to the
-// *worker from an incrementing tid (task id).
+// Maps populated during pipeline execution. External tasks get the current
+// Robot API context from the pipeline eid (GOPHER_CALLER_ID), while Go tasks
+// get a handle to the *worker from an incrementing tid (task id).
+//
+// The external caller ID is owned by the pipeline lifecycle: each task refreshes
+// the mapped Robot context, and worker.deregister removes the eid when the
+// pipeline exits.
 var taskLookup = struct {
 	e map[string]Robot
 	i map[int]*worker
@@ -311,6 +315,26 @@ var taskLookup = struct {
 	make(map[string]Robot),
 	make(map[int]*worker),
 	sync.RWMutex{},
+}
+
+// registerExternalAPIRobot refreshes the Robot context for this pipeline's
+// caller ID. The caller ID remains valid until the pipeline is deregistered.
+func registerExternalAPIRobot(eid string, r Robot) {
+	if eid == "" {
+		return
+	}
+	taskLookup.Lock()
+	taskLookup.e[eid] = r
+	taskLookup.Unlock()
+}
+
+func deregisterExternalAPICaller(eid string) {
+	if eid == "" {
+		return
+	}
+	taskLookup.Lock()
+	delete(taskLookup.e, eid)
+	taskLookup.Unlock()
 }
 
 // register a worker for a tid so Go tasks can look up the *worker
@@ -476,14 +500,9 @@ func (w *worker) callTaskThread(rchan chan<- taskReturn, opts taskCallOptions, t
 		}
 	}
 
-	// Task lookup; add lookup for http.go
-	taskLookup.Lock()
-	taskLookup.e[eid] = r
-	taskLookup.Unlock()
+	// Refresh the pipeline-scoped caller ID with this task's Robot context.
+	registerExternalAPIRobot(eid, r)
 	defer func() {
-		taskLookup.Lock()
-		delete(taskLookup.e, eid)
-		taskLookup.Unlock()
 		deregisterWorker(r.tid)
 	}()
 

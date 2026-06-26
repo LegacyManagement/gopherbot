@@ -163,6 +163,10 @@ Catch-all mode scoping:
 - File-backed extensions run through child process boundaries:
   - external executables use `pipeline-child-exec`
   - Lua, JavaScript, Gopherbot shell, and interpreted Go use `pipeline-child-rpc`
+- Legacy HTTP/JSON Robot API caller IDs (`GOPHER_CALLER_ID`) are scoped to
+  the active pipeline. Each external executable task refreshes the mapped
+  Robot context before it runs, so Robot API calls resolve against the current
+  task, and the caller ID is removed only when the pipeline deregisters.
 - File-backed extension environments preserve parent `HOME` and `PATH` when
   those values are set. Robot-specific directories are exposed through
   `GOPHER_HOME`, `GOPHER_CONFIGDIR`, `GOPHER_INSTALLDIR`, and
