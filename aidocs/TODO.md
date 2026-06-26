@@ -172,6 +172,24 @@ PluginApprovers:
     is useful and safe there
   - update `aidocs/STARTUP_FLOW.md` and focused tests if shutdown semantics
     change
+- [ ] Add secure deployment guidance and artifacts for Terraform/systemd.
+  Goal: keep bootstrap/decryption launch secrets in a root-owned
+  `/etc/<robotname>.env` file and reference it from the robot systemd unit with
+  `EnvironmentFile=`, so systemd injects `GOPHER_ENCRYPTION_KEY` and
+  `GOPHER_DEPLOY_KEY` only at process startup. The robot should still scrub
+  `GOPHER_*` values after initialization and restore original launch
+  environment values only for built-in self-restart.
+  Follow-up:
+  - update `resources/robot.service` and deployment/Terraform docs to prefer
+    `/etc/<robotname>.env` for production secrets, owned by root and readable
+    only by root/systemd
+  - document when `GOPHER_DEPLOY_KEY` is required after bootstrap and when it
+    should be removed from the long-lived service environment
+  - add systemd hardening so unprivileged child processes cannot attach to the
+    parent and read in-memory encryption material; validate the target
+    distro/systemd support for `RestrictPtrace` or the appropriate equivalent
+  - confirm privileged plugins/tasks still receive only explicit scoped secrets,
+    not ambient decryption capability through inherited environment
 - [x] Improve `restore-brain` v3 migration defaults and startup guidance.
   `restore-brain` now defaults to v3 output, `restore-brain -v2` is the
   explicit rollback/export path, and startup errors for v2/unversioned cloud
