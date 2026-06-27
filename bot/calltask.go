@@ -107,7 +107,6 @@ func buildConfigureEnv() []string {
 		fmt.Sprintf("GOPHER_HOME=%s", homePath),
 		fmt.Sprintf("RUBYLIB=%s/lib:%s/custom/lib", installPath, homePath),
 		fmt.Sprintf("GEM_HOME=%s", gemHome),
-		fmt.Sprintf("GEM_PATH=%s", gemHome),
 		// empty entry at the end for JULIA, see: https://docs.julialang.org/en/v1/manual/environment-variables/
 		fmt.Sprintf("JULIA_LOAD_PATH=%s/lib:%s/custom/lib:", installPath, homePath),
 		fmt.Sprintf("PYTHONPATH=%s/lib:%s/custom/lib", installPath, homePath),

@@ -663,7 +663,6 @@ func (w *worker) getEnvironment(t interface{}) (env, parameters map[string]strin
 	envhash["JULIA_LOAD_PATH"] = fmt.Sprintf("%s/lib:%s/lib:", installPath, configFull)
 	gemHome := filepath.Join(homePath, ".bot-gems")
 	envhash["GEM_HOME"] = gemHome
-	envhash["GEM_PATH"] = gemHome
 	envhash["PYTHONPATH"] = libPath
 	envhash["PYTHONUSERBASE"] = filepath.Join(homePath, ".bot-python")
 	envhash["GOPHER_ENVIRONMENT"] = getEnv("GOPHER_ENVIRONMENT")

@@ -83,10 +83,12 @@ values:
 - `GOPHER_HOME` is the robot home/root directory.
 - `GOPHER_CONFIGDIR`, `GOPHER_INSTALLDIR`, `GOPHER_WORKSPACE`, and other
   `GOPHER_*` values describe robot runtime context.
-- Ruby external scripts receive `GEM_HOME` and `GEM_PATH` pointing at
+- Ruby external scripts receive `GEM_HOME` pointing at
   `$GOPHER_HOME/.bot-gems`. This directory is the robot-managed Ruby dependency
-  cache; the shipped `install-libs` job installs Bundler gems there and makes
-  dependency code readable/traversable by unprivileged privsep children.
+  cache; the shipped `install-libs` job installs Bundler and then runs Bundler
+  with `BUNDLE_PATH__SYSTEM=true`, so Gemfile dependencies are installed as
+  normal RubyGems under `GEM_HOME`. The engine does not override `GEM_PATH`, so
+  system gems remain visible to external Ruby scripts.
 - Python external scripts receive `PYTHONUSERBASE` pointing at
   `$GOPHER_HOME/.bot-python`. The shipped `install-libs` job installs
   `requirements.txt` dependencies there with `pip install --user` and makes

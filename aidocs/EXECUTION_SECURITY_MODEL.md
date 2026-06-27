@@ -119,12 +119,13 @@ Platform mechanics differ:
   - external task environments preserve parent `HOME` and `PATH` when present;
     robot-owned paths remain explicit through `GOPHER_HOME`,
     `GOPHER_CONFIGDIR`, `GOPHER_INSTALLDIR`, and `GOPHER_WORKSPACE`.
-  - Ruby external task environments set `GEM_HOME` and `GEM_PATH` to
+  - Ruby external task environments set `GEM_HOME` to
     `$GOPHER_HOME/.bot-gems`. This is the robot-managed Ruby dependency cache,
     distinct from general user-local state such as `$GOPHER_HOME/.local`.
-    The shipped `install-libs` job installs Bundler gems there and normalizes
-    dependency-code permissions so unprivileged privsep children can load them
-    without making the broader robot home readable.
+    The shipped `install-libs` job installs Bundler there and runs Bundler with
+    `BUNDLE_PATH__SYSTEM=true`, so Gemfile dependencies install as normal
+    RubyGems under `GEM_HOME`. The engine does not override `GEM_PATH`, so
+    system gems remain visible to external Ruby scripts.
   - Python external task environments set `PYTHONUSERBASE` to
     `$GOPHER_HOME/.bot-python`. The shipped `install-libs` job installs
     `requirements.txt` dependencies there with `pip install --user` and
